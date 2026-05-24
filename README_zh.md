@@ -63,11 +63,15 @@ pip install -r requirements.txt
 
 2. 下载模型
 
-[MinerU-Popo](https://huggingface.co/DreamEternal/MinerU-Popo)
+下载 MinerU-Popo 后处理模型：
 
-[Qwen3-VL-4B](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct)
+```bash
+hf download DreamEternal/MinerU-Popo --local-dir models/MinerU-Popo
+```
 
-3. 模型配置
+- [MinerU-Popo](https://huggingface.co/DreamEternal/MinerU-Popo)
+
+1. 模型配置
 
 在 [Configuration](./post_processing/model_utils.py) 中，
 对于 transformer 推理，请编辑环境变量 `POPO_MODEL_PATH`。对于 vllm 推理，请编辑函数`popo_generate`中的变量 `url` 和 `key`。

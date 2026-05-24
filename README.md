@@ -64,11 +64,15 @@ pip install -r requirements.txt
 
 2. Download Model
 
-[MinerU-Popo](https://huggingface.co/DreamEternal/MinerU-Popo)
+Download the MinerU-Popo post-processing model:
 
-[Qwen3-VL-4B](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct)
+```bash
+hf download DreamEternal/MinerU-Popo --local-dir models/Mineru-Popo
+```
 
-3. Model Configuration
+- [MinerU-Popo](https://huggingface.co/DreamEternal/MinerU-Popo)
+
+1. Model Configuration
 
 In the [Configuration](./post_processing/model_utils.py),
 for transformer inference, edit the environment `POPO_MODEL_PATH`. For vllm inference, edit the `url` and `key` in function `popo_generate`.
