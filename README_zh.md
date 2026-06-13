@@ -55,14 +55,21 @@
 
 ## ⚙️ 安装
 
-1. 准备环境
+### 准备环境
+
 ```bash
 conda create -n popo python=3.10
 conda activate popo
 pip install -r requirements.txt
 ```
+或通过 Docker 安装
 
-2. 下载模型
+```bash
+docker run -it --rm --gpus=all --ipc=host --network=host dockerrr8277/mineru-popo-vllm:latest
+```
+
+
+### 下载模型
 
 下载 MinerU-Popo 后处理模型：
 
@@ -72,7 +79,7 @@ hf download DreamEternal/MinerU-Popo --local-dir models/MinerU-Popo
 
 - [MinerU-Popo](https://huggingface.co/DreamEternal/MinerU-Popo)
 
-1. 模型配置
+### 模型配置
 
 在 [Configuration](./post_processing/model_utils.py) 中，
 对于 transformer 推理，请编辑环境变量 `POPO_MODEL_PATH`。对于 vllm 推理，请编辑函数`popo_generate`中的变量 `url` 和 `key`。
