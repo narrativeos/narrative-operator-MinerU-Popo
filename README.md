@@ -158,10 +158,22 @@ output_cases/
 ```
 
 
-
 ## 🙏 Acknowledgements
 - [MinerU](https://github.com/opendatalab/MinerU) and other OCR system (MonkeyOCR, Dolphin, PaddleOCR, GLM-OCR) for page-level parsing.
 - [ViDoRe V3](https://huggingface.co/datasets/vidore/vidore-benchmark-v3) and [MMDA](https://huggingface.co/datasets/DreamEternal/MMDA_Bench) as benchmarks.
+
+
+## 📚 Citation
+If you find this project useful for your research, please consider giving us a star and citing our paper:  
+
+```bibtex
+@article{xu2026mineru,
+  title={MinerU-Popo: Universal Post-Processing Model for Structured Document Parsing},
+  author={Xu, Bangrui and Miao, Ziyang and Zhou, Xuanhe and Lin, Yiming and Tang, Zirui and Zhao, Xiaomeng and Wu, Fan and Tan, Cheng and Wang, Bin and He, Conghui},
+  journal={arXiv preprint arXiv:2605.24973},
+  year={2026}
+}
+```
 
 ## 📄 License
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.

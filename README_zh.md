@@ -161,5 +161,17 @@ output_cases/
 - [MinerU](https://github.com/opendatalab/MinerU) 及其他 OCR 系统（MonkeyOCR、Dolphin、PaddleOCR、GLM-OCR）提供的页面级解析能力。
 - [ViDoRe V3](https://huggingface.co/datasets/vidore/vidore-benchmark-v3) 和 [MMDA](https://huggingface.co/datasets/DreamEternal/MMDA_Bench) 作为评测基准。
 
+
+## 📚 论文引用
+
+```bibtex
+@article{xu2026mineru,
+  title={MinerU-Popo: Universal Post-Processing Model for Structured Document Parsing},
+  author={Xu, Bangrui and Miao, Ziyang and Zhou, Xuanhe and Lin, Yiming and Tang, Zirui and Zhao, Xiaomeng and Wu, Fan and Tan, Cheng and Wang, Bin and He, Conghui},
+  journal={arXiv preprint arXiv:2605.24973},
+  year={2026}
+}
+```
+
 ## 📄 许可证
 本项目采用 MIT 许可证。详见 [LICENSE](./LICENSE)。
