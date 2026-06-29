@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 #### Install from Docker Image
 ```bash
- docker run -it --rm --gpus=all --ipc=host --network=host dockerrr8277/mineru-popo-vllm:latest
+docker run -it --rm --gpus=all --ipc=host --network=host --name narrative-operator-mineru-popo dockerrr8277/mineru-popo-vllm:latest
 ```
 
 ### Download Model

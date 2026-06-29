@@ -65,7 +65,7 @@ pip install -r requirements.txt
 或通过 Docker 安装
 
 ```bash
-docker run -it --rm --gpus=all --ipc=host --network=host dockerrr8277/mineru-popo-vllm:latest
+docker run -it --rm --gpus=all --ipc=host --network=host --name narrative-operator-mineru-popo dockerrr8277/mineru-popo-vllm:latest
 ```
 
 
