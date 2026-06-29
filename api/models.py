@@ -33,18 +33,36 @@ class TreeNode(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    """Response for document processing."""
+    """Response for synchronous document processing."""
     doc_id: str
     status: str  # "success" or "error"
     message: str = ""
     tree: Optional[TreeNode] = None
 
 
+class TaskCreateResponse(BaseModel):
+    """Response when creating a new async task."""
+    task_id: str
+    status: str = "pending"
+    message: str = "Task submitted successfully"
+
+
 class TaskStatusResponse(BaseModel):
-    """Response for task status queries."""
+    """Response for task status queries (GET /tasks/{task_id})."""
     task_id: str
     status: str  # "pending", "processing", "completed", "failed"
     progress: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+    doc_id: str = ""
+    model: str = ""
+    error: Optional[str] = None
+
+
+class TaskResultResponse(BaseModel):
+    """Response for task result queries (GET /tasks/{task_id}/result)."""
+    task_id: str
+    status: str
     result: Optional[ProcessResponse] = None
     error: Optional[str] = None
 
@@ -52,7 +70,9 @@ class TaskStatusResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = "ok"
-    model_loaded: bool = False
+    redis_connected: bool = False
+    queue_length: int = 0
+    workers_active: int = 0
     supported_models: List[str] = [
         "mineru",
         "monkeyocr",

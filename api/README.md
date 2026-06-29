@@ -1,6 +1,6 @@
 # MinerU-Popo FastAPI Service
 
-FastAPI wrapper for the MinerU-Popo document post-processing pipeline.
+FastAPI wrapper for the MinerU-Popo document post-processing pipeline with Redis-based task queue.
 
 ## Installation
 
@@ -14,6 +14,13 @@ Make sure the main project dependencies are also installed:
 pip install -r requirements.txt
 ```
 
+## Prerequisites
+
+- **Redis Server**: Required for async task queue. Start Redis on default port:
+  ```bash
+  redis-server
+  ```
+
 ## Configuration
 
 Set environment variables before starting:
@@ -22,32 +29,58 @@ Set environment variables before starting:
 # Model path (required for inference)
 export POPO_MODEL_PATH=/path/to/Mineru-Popo
 
+# Redis configuration (optional, defaults shown)
+export POPO_REDIS_HOST=localhost
+export POPO_REDIS_PORT=6379
+export POPO_REDIS_DB=0
+export POPO_REDIS_PASSWORD=""
+
 # Server settings (optional)
 export POPO_API_HOST=0.0.0.0
 export POPO_API_PORT=8000
+
+# Worker settings (optional)
+export POPO_WORKER_CONCURRENCY=4
+export POPO_SYNC_TIMEOUT=300
 ```
 
 ## Running the Server
 
 ```bash
-# Development
+# Development (starts API server + background worker)
 python -m api.main
 
 # Production with uvicorn
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Worker only (separate process)
+python -c "from api.services.worker import run_worker; run_worker()"
 ```
+
+On startup, the server automatically starts a background worker thread that processes tasks from the Redis queue.
 
 ## API Endpoints
 
-### Health Check
+### 1. Health Check
 
 ```
 GET /health
 ```
 
-Returns service status and supported models.
+Returns service status, Redis connection status, queue length, and active workers.
 
-### Process OCR Output (ZIP Upload)
+**Response:**
+```json
+{
+  "status": "ok",
+  "redis_connected": true,
+  "queue_length": 0,
+  "workers_active": 1,
+  "supported_models": ["mineru", "monkeyocr", "PaddleOCR-VL-1.5", "dolphin", "glm-ocr"]
+}
+```
+
+### 2. Synchronous Processing
 
 ```
 POST /process
@@ -58,8 +91,9 @@ Content-Type: multipart/form-data
 - doc_id: (optional) Document identifier, inferred from filename if not provided
 ```
 
-**Example:**
+Submits a ZIP with OCR output, **waits for the full pipeline to finish**, and returns the final document tree in the same response. Suitable for small documents.
 
+**Example:**
 ```bash
 curl -X POST http://localhost:8000/process \
   -F "file=@ocr_output.zip" \
@@ -67,98 +101,138 @@ curl -X POST http://localhost:8000/process \
   -F "doc_id=my_document"
 ```
 
-**ZIP Structure (MinerU example):**
-
-```
-my_document_model.json
-```
-
-or
-
-```
-vlm/
-  my_document_model.json
-  my_document_middle.json
-```
-
-### Process OCR Output (JSON Input)
-
-```
-POST /process/json
-Content-Type: application/json
-
-{
-  "doc_id": "my_document",
-  "model": "mineru",
-  "pages": {
-    "1": [
-      {
-        "type": "title",
-        "content": "Chapter 1",
-        "bbox": [0.1, 0.1, 0.5, 0.15],
-        "source_id": "doc:0"
-      }
-    ]
-  }
-}
-```
-
-### Async Task Processing
-
-For long documents, use async endpoints:
-
-```
-POST /tasks           # Create async task, returns task_id
-GET  /tasks/{task_id} # Check task status and result
-```
-
-**Example:**
-
-```bash
-# Create task
-curl -X POST http://localhost:8000/tasks \
-  -F "file=@large_doc.zip" \
-  -F "model=mineru"
-
-# Check status
-curl http://localhost:8000/tasks/<task_id>
-```
-
-## Response Format
-
+**Response:**
 ```json
 {
   "doc_id": "my_document",
   "status": "success",
   "message": "Document processed successfully",
-  "tree": {
-    "type": "root",
-    "title": "",
-    "content": "",
-    "level": 0,
-    "location": [],
-    "block_ids": [],
-    "children": [
-      {
-        "type": "text",
-        "title": "Chapter 1",
-        "content": "Chapter 1",
-        "level": 1,
-        "location": [
-          {
-            "bbox": [0.1, 0.1, 0.5, 0.15],
-            "page": 1
-          }
-        ],
-        "block_ids": [0],
-        "children": []
-      }
-    ]
-  }
+  "tree": { ... }
 }
 ```
 
-## Supported OCR Models
+### 3. Submit Async Task
+
+```
+POST /tasks
+Content-Type: multipart/form-data
+
+- file: ZIP archive containing OCR output files
+- model: OCR model name
+- doc_id: (optional) Document identifier
+```
+
+Uploads a ZIP with OCR output and **returns immediately** with a task ID. The task is placed in the Redis queue and processed by a background worker.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/tasks \
+  -F "file=@ocr_output.zip" \
+  -F "model=mineru"
+```
+
+**Response (202 Accepted):**
+```json
+{
+  "task_id": "a1b2c3d4e5f6",
+  "status": "pending",
+  "message": "Task submitted successfully"
+}
+```
+
+### 4. Get Task Status
+
+```
+GET /tasks/{task_id}
+```
+
+Returns the current status of an async task.
+
+**Example:**
+```bash
+curl http://localhost:8000/tasks/a1b2c3d4e5f6
+```
+
+**Response:**
+```json
+{
+  "task_id": "a1b2c3d4e5f6",
+  "status": "processing",
+  "progress": "Running inference...",
+  "created_at": "2024-01-01T00:00:00",
+  "updated_at": "2024-01-01T00:05:00",
+  "doc_id": "my_document",
+  "model": "mineru",
+  "error": null
+}
+```
+
+**Status values:** `pending`, `processing`, `completed`, `failed`
+
+### 5. Get Task Result
+
+```
+GET /tasks/{task_id}/result
+```
+
+Returns the final processing result (document tree). If the task is still pending or processing, returns the current status.
+
+**Example:**
+```bash
+curl http://localhost:8000/tasks/a1b2c3d4e5f6/result
+```
+
+**Response (completed):**
+```json
+{
+  "task_id": "a1b2c3d4e5f6",
+  "status": "completed",
+  "result": {
+    "doc_id": "my_document",
+    "status": "success",
+    "message": "Document processed successfully",
+    "tree": { ... }
+  },
+  "error": null
+}
+```
+
+**Response (still processing):**
+```json
+{
+  "task_id": "a1b2c3d4e5f6",
+  "status": "processing",
+  "error": "Task is still processing"
+}
+```
+
+### 6. JSON Input (Synchronous)
+
+```
+POST /process/json
+Content-Type: application/json
+```
+
+Submit already-normalized pages data directly for inference and tree building.
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/process/json \
+  -H "Content-Type: application/json" \
+  -d '{
+    "doc_id": "mydoc",
+    "model": "mineru",
+    "pages": {
+      "1": [
+        {"type": "title", "content": "Chapter 1", "bbox": [0.1, 0.1, 0.5, 0.15]}
+      ]
+    }
+  }'
+```
+
+## ZIP File Structure
+
+The ZIP file should contain OCR output files in the format expected by the specified model:
 
 | Model | ZIP Contents |
 |-------|-------------|
@@ -168,11 +242,31 @@ curl http://localhost:8000/tasks/<task_id>
 | `dolphin` | `recognition_json/{doc_id}.json` |
 | `glm-ocr` | `{doc_id}_model.json` or `page_*.json` files |
 
+## Architecture
+
+```
+Client → FastAPI → Redis Queue → Worker → Redis Result
+     │            │              │
+     │         Task Status    Processing
+     │         Task Result    Pipeline
+     │
+     └→ Sync Response (for /process)
+```
+
 ## Production Deployment
 
 For production use, consider:
 
-1. **Task Queue**: Replace in-memory task store with Redis + Celery
-2. **File Storage**: Use cloud storage (S3, OSS) instead of temp files
-3. **Reverse Proxy**: Nginx for load balancing and static file serving
-4. **Containerization**: Docker with GPU support for model inference
+1. **Separate Worker Processes**: Run workers as separate processes instead of threads:
+   ```bash
+   # Worker process 1
+   python -c "from api.services.worker import run_worker; run_worker('worker-1')"
+   
+   # Worker process 2
+   python -c "from api.services.worker import run_worker; run_worker('worker-2')"
+   ```
+
+2. **Redis Persistence**: Configure Redis AOF/RDB for task persistence
+3. **Task Cleanup**: Implement a cleanup job to remove old tasks/results
+4. **Reverse Proxy**: Nginx for load balancing and static file serving
+5. **Containerization**: Docker with GPU support for model inference
