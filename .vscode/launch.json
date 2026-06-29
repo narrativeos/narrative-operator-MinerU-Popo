@@ -1,0 +1,125 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Evaluate",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/eval/evaluate.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Generate Metadata",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/generate_metadata.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Split Subnode",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/split_subnode.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Table Merge Filter",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/data_engine/table_merge_filter.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Table Utils",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/data_engine/table_utils.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: API Utils",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/data_engine/api_utils.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Model Utils",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/model_utils.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Table Merge Utils",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/table_merge_utils.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Debug Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Label Normalization (interactive)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/label_normalization.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": [],
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Run Inference (interactive)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/run_inference.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": [],
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Inference (single doc)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/inference.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "justMyCode": false
+    },
+    {
+      "name": "Python: Get JSON Tree (interactive)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/post_processing/get_json_tree.py",
+      "console": "integratedTerminal",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": [],
+      "justMyCode": false
+    }
+  ]
+}

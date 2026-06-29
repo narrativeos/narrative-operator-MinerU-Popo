@@ -1,3 +1,10 @@
 __pycache__/
 *.egg-info/
 *.egg
+.env
+.venv/
+*.pdf
+outputs/
+post-process/
+models/
+data/

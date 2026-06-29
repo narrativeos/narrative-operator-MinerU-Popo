@@ -12,6 +12,60 @@ import base64
 
 _TRANSFORMERS_MODEL = None
 _TRANSFORMERS_PROCESSOR = None
+_CURRENT_DEVICE = None
+
+
+def get_device():
+    """自动检测可用的计算设备 (CUDA/MPS/CPU)。
+    
+    优先级:
+    1. 环境变量 POPO_DEVICE_MODE (手动指定)
+    2. CUDA (NVIDIA GPU)
+    3. MPS (Apple Silicon)
+    4. CPU (回退)
+    
+    Returns:
+        str: 设备名称 ("cuda", "mps", 或 "cpu")
+    """
+    device_mode = os.getenv('POPO_DEVICE_MODE', None)
+    if device_mode is not None:
+        return device_mode
+    
+    import torch
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.backends.mps.is_available():
+        return "mps"
+    else:
+        return "cpu"
+
+
+def clean_memory(device=None):
+    """清理指定设备的内存缓存。
+    
+    Args:
+        device: 设备名称，如果为 None 则自动检测
+    """
+    if device is None:
+        device = get_device()
+    
+    import torch
+    device_str = str(device)
+    
+    if device_str.startswith("cuda"):
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    elif device_str.startswith("mps"):
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+
+
+def _get_device():
+    """获取当前设备，缓存结果以避免重复检测。"""
+    global _CURRENT_DEVICE
+    if _CURRENT_DEVICE is None:
+        _CURRENT_DEVICE = get_device()
+    return _CURRENT_DEVICE
 
 
 def _transformers_generate(prompt, base64_image):
@@ -24,13 +78,26 @@ def _transformers_generate(prompt, base64_image):
         "popo_model",
     )
     max_new_tokens = int(os.environ.get("POPO_MAX_NEW_TOKENS", "2048"))
+    device = _get_device()
 
     if _TRANSFORMERS_MODEL is None or _TRANSFORMERS_PROCESSOR is None:
+        # 根据设备选择合适的 dtype
+        # MPS 不支持 bfloat16，使用 float16 作为替代
+        if device == "mps":
+            torch_dtype = torch.float16
+        else:
+            torch_dtype = torch.bfloat16
+            
+        # 先加载到 CPU，再移动到目标设备，避免 MPS 的 device_map 内存计算问题
         _TRANSFORMERS_MODEL = Qwen3VLForConditionalGeneration.from_pretrained(
             model_path,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
+            torch_dtype=torch_dtype,
+            device_map="cpu",
         )
+        if device == "mps":
+            _TRANSFORMERS_MODEL = _TRANSFORMERS_MODEL.to("mps")
+        elif device == "cuda":
+            _TRANSFORMERS_MODEL = _TRANSFORMERS_MODEL.to("cuda")
         _TRANSFORMERS_PROCESSOR = AutoProcessor.from_pretrained(
             model_path,
             tokenizer_kwargs={"padding_side": "left"},
@@ -56,7 +123,10 @@ def _transformers_generate(prompt, base64_image):
         return_dict=True,
         return_tensors="pt",
     )
-    inputs = inputs.to(_TRANSFORMERS_MODEL.device)
+    # 将输入转移到模型所在的设备
+    device = _TRANSFORMERS_MODEL.device
+    inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+    
     with torch.no_grad():
         generated_ids = _TRANSFORMERS_MODEL.generate(**inputs, max_new_tokens=max_new_tokens)
     generated_ids_trimmed = [
@@ -75,9 +145,9 @@ def popo_generate(prompt, base64_image):
 
     from openai import OpenAI
 
-    url = ""
-    key = ""
-    base_model = "Popo"
+    url = "http://127.0.0.1:1234/v1"
+    key = "not-needed"  # LM Studio doesn't require a real key
+    base_model = "qwen/qwen3-vl-4b"
     client = OpenAI(
         base_url=url,
         api_key=key

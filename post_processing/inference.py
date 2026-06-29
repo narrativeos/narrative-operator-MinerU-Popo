@@ -75,11 +75,25 @@ def concatenate_pdf_pages_with_border(doc_label, pages, border_width=5, border_c
             y_offset += img.height
     
     buffered = io.BytesIO()
-
+    
+    # Convert to RGB if necessary (JPEG doesn't support alpha channel)
+    if result.mode in ('RGBA', 'LA', 'PA'):
+        result = result.convert('RGB')
+    elif result.mode == 'P':
+        result = result.convert('RGB')
+    elif result.mode != 'RGB':
+        result = result.convert('RGB')
     
     buffered.seek(0)
     buffered.truncate(0)
-    result.save(buffered, format="JPEG", quality=100, optimize=True)
+    # Try JPEG first, fallback to PNG if JPEG fails
+    try:
+        result.save(buffered, format="JPEG", quality=95)
+    except Exception:
+        # Fallback to PNG which supports all modes
+        buffered.seek(0)
+        buffered.truncate(0)
+        result.save(buffered, format="PNG")
         
     base64_result = base64.b64encode(buffered.getvalue()).decode('utf-8')
     return base64_result
