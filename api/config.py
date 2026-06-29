@@ -16,18 +16,14 @@ def get_temp_dir() -> Path:
     return temp_dir
 
 
-# Redis configuration
-REDIS_HOST = os.environ.get("POPO_REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("POPO_REDIS_PORT", "6379"))
-REDIS_DB = int(os.environ.get("POPO_REDIS_DB", "0"))
-REDIS_PASSWORD = os.environ.get("POPO_REDIS_PASSWORD", "")
-REDIS_TASK_TTL = int(os.environ.get("POPO_TASK_TTL", "86400"))  # 24 hours in seconds
+# SQLite configuration
+SQLITE_DB_PATH = os.environ.get(
+    "POPO_SQLITE_PATH",
+    str(Path(__file__).resolve().parents[1] / "data" / "popo_tasks.db")
+)
 
-# Redis key prefixes
-REDIS_TASK_PREFIX = "popo:task:"
-REDIS_RESULT_PREFIX = "popo:result:"
-REDIS_QUEUE_KEY = "popo:queue"
-REDIS_WORKER_PREFIX = "popo:worker:"
+# Task TTL in seconds (for cleanup)
+TASK_TTL_SECONDS = int(os.environ.get("POPO_TASK_TTL", "86400"))  # 24 hours
 
 # Supported OCR models
 SUPPORTED_MODELS = [

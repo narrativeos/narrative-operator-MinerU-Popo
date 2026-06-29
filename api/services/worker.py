@@ -1,9 +1,10 @@
-"""Background worker for processing MinerU-Popo tasks from Redis queue."""
+"""Background worker for processing MinerU-Popo tasks from SQLite queue."""
 
 import json
 import os
 import shutil
 import sys
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -12,29 +13,20 @@ from typing import Any, Dict, Optional
 from api.config import (
     get_model_path,
     get_temp_dir,
-    REDIS_TASK_TTL,
     SYNC_TIMEOUT,
 )
 from api.services.queue import (
     pop_task,
-    register_worker,
-    unregister_worker,
     update_task_status,
-    update_worker_status,
     get_task_status,
     save_task_result,
 )
 
 
-def _build_tree_response(tree: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert raw tree dict to serializable format."""
-    return tree
-
-
 def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[str, Any]:
     """
     Run the full processing pipeline: normalize -> infer -> build tree.
-    
+
     Returns the final document tree dict.
     """
     # Add project paths
@@ -71,7 +63,7 @@ def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[s
 def process_task(task_id: str, worker_id: str) -> None:
     """
     Process a single task from the queue.
-    
+
     Args:
         task_id: The task identifier
         worker_id: The worker identifier
@@ -86,12 +78,10 @@ def process_task(task_id: str, worker_id: str) -> None:
 
     try:
         update_task_status(task_id, "processing", "Extracting files...")
-        update_worker_status(worker_id, "processing", task_id)
 
         extract_dir = Path(work_dir) / "extracted"
 
         update_task_status(task_id, "processing", "Normalizing labels...")
-        # Path is set up in _process_pipeline
 
         update_task_status(task_id, "processing", "Running inference...")
 
@@ -109,7 +99,6 @@ def process_task(task_id: str, worker_id: str) -> None:
         save_task_result(task_id, result)
 
         update_task_status(task_id, "completed", "Processing completed")
-        update_worker_status(worker_id, "idle", "")
 
     except Exception as e:
         error_msg = str(e)
@@ -120,13 +109,12 @@ def process_task(task_id: str, worker_id: str) -> None:
             "tree": "",
         })
         update_task_status(task_id, "failed", f"Processing failed: {error_msg}", error=error_msg)
-        update_worker_status(worker_id, "idle", "")
 
 
 def run_worker(worker_id: Optional[str] = None) -> None:
     """
     Run the worker loop, continuously processing tasks from the queue.
-    
+
     Args:
         worker_id: Optional worker identifier, generated if not provided
     """
@@ -134,7 +122,6 @@ def run_worker(worker_id: Optional[str] = None) -> None:
         worker_id = f"worker-{uuid.uuid4().hex[:8]}"
 
     print(f"[{worker_id}] Starting worker...")
-    register_worker(worker_id)
 
     try:
         while True:
@@ -144,19 +131,18 @@ def run_worker(worker_id: Optional[str] = None) -> None:
                 process_task(task_id, worker_id)
                 print(f"[{worker_id}] Task {task_id} completed")
             else:
-                # No task available, keep heartbeat
-                update_worker_status(worker_id, "idle", "")
+                # No task available, sleep briefly before polling again
+                time.sleep(1)
     except KeyboardInterrupt:
         print(f"[{worker_id}] Shutting down...")
     finally:
-        unregister_worker(worker_id)
         print(f"[{worker_id}] Worker stopped.")
 
 
 def run_worker_async() -> None:
     """
     Run worker in a background thread.
-    
+
     This is used when starting the worker alongside the FastAPI server.
     """
     import threading

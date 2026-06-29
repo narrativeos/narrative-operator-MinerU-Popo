@@ -1,4 +1,4 @@
-"""FastAPI application for MinerU-Popo post-processing service with Redis queue."""
+"""FastAPI application for MinerU-Popo post-processing service with SQLite queue."""
 
 import json
 import os
@@ -40,7 +40,8 @@ from api.services.queue import (
     get_queue_length,
     get_task_result,
     get_task_status,
-    is_redis_connected,
+    init_db,
+    is_db_available,
     pop_task,
     save_task_result,
     update_task_status,
@@ -126,13 +127,13 @@ def _extract_and_prepare(file: UploadFile, doc_id: Optional[str] = None) -> tupl
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    redis_ok = is_redis_connected()
-    queue_len = get_queue_length() if redis_ok else 0
-    workers = get_active_workers() if redis_ok else 0
+    db_ok = is_db_available()
+    queue_len = get_queue_length() if db_ok else 0
+    workers = get_active_workers() if db_ok else 0
 
     return HealthResponse(
-        status="ok" if redis_ok else "degraded",
-        redis_connected=redis_ok,
+        status="ok" if db_ok else "degraded",
+        redis_connected=db_ok,
         queue_length=queue_len,
         workers_active=workers,
     )
@@ -203,16 +204,16 @@ async def submit_parse_task(
             detail=f"Unsupported model: {model}. Supported: {SUPPORTED_MODELS}",
         )
 
-    # Check Redis connection
-    if not is_redis_connected():
+    # Check DB connection
+    if not is_db_available():
         raise HTTPException(
             status_code=503,
-            detail="Redis connection failed. Cannot submit async tasks.",
+            detail="Database connection failed. Cannot submit async tasks.",
         )
 
     task_id, work_dir, extract_dir, final_doc_id = _extract_and_prepare(file, doc_id)
 
-    # Create task in Redis queue
+    # Create task in database
     create_task(
         task_id=task_id,
         doc_id=final_doc_id,
@@ -366,7 +367,8 @@ async def process_json_data(request: ProcessRequest):
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background workers on startup."""
+    """Initialize database and start background workers on startup."""
+    init_db()
     from api.services.worker import run_worker_async
     run_worker_async()
 

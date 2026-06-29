@@ -1,6 +1,6 @@
 # MinerU-Popo FastAPI Service
 
-FastAPI wrapper for the MinerU-Popo document post-processing pipeline with Redis-based task queue.
+FastAPI wrapper for the MinerU-Popo document post-processing pipeline with SQLite-based task queue.
 
 ## Installation
 
@@ -16,10 +16,7 @@ pip install -r requirements.txt
 
 ## Prerequisites
 
-- **Redis Server**: Required for async task queue. Start Redis on default port:
-  ```bash
-  redis-server
-  ```
+No external services required. The task queue uses SQLite (built into Python) for persistence.
 
 ## Configuration
 
@@ -29,11 +26,8 @@ Set environment variables before starting:
 # Model path (required for inference)
 export POPO_MODEL_PATH=/path/to/Mineru-Popo
 
-# Redis configuration (optional, defaults shown)
-export POPO_REDIS_HOST=localhost
-export POPO_REDIS_PORT=6379
-export POPO_REDIS_DB=0
-export POPO_REDIS_PASSWORD=""
+# SQLite database path (optional, defaults to ./data/popo_tasks.db)
+export POPO_SQLITE_PATH=./data/popo_tasks.db
 
 # Server settings (optional)
 export POPO_API_HOST=0.0.0.0
@@ -42,6 +36,7 @@ export POPO_API_PORT=8000
 # Worker settings (optional)
 export POPO_WORKER_CONCURRENCY=4
 export POPO_SYNC_TIMEOUT=300
+export POPO_TASK_TTL=86400
 ```
 
 ## Running the Server
@@ -57,7 +52,9 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
 python -c "from api.services.worker import run_worker; run_worker()"
 ```
 
-On startup, the server automatically starts a background worker thread that processes tasks from the Redis queue.
+On startup, the server automatically:
+1. Initializes the SQLite database
+2. Starts a background worker thread that processes tasks from the queue
 
 ## API Endpoints
 
@@ -67,7 +64,7 @@ On startup, the server automatically starts a background worker thread that proc
 GET /health
 ```
 
-Returns service status, Redis connection status, queue length, and active workers.
+Returns service status, database connection status, queue length, and active workers.
 
 **Response:**
 ```json
@@ -122,7 +119,7 @@ Content-Type: multipart/form-data
 - doc_id: (optional) Document identifier
 ```
 
-Uploads a ZIP with OCR output and **returns immediately** with a task ID. The task is placed in the Redis queue and processed by a background worker.
+Uploads a ZIP with OCR output and **returns immediately** with a task ID. The task is stored in SQLite and processed by a background worker.
 
 **Example:**
 ```bash
@@ -245,7 +242,7 @@ The ZIP file should contain OCR output files in the format expected by the speci
 ## Architecture
 
 ```
-Client → FastAPI → Redis Queue → Worker → Redis Result
+Client → FastAPI → SQLite Queue → Worker → SQLite Result
      │            │              │
      │         Task Status    Processing
      │         Task Result    Pipeline
@@ -253,20 +250,45 @@ Client → FastAPI → Redis Queue → Worker → Redis Result
      └→ Sync Response (for /process)
 ```
 
+## Database Schema
+
+The SQLite database (`popo_tasks.db`) contains a single `tasks` table:
+
+```sql
+CREATE TABLE tasks (
+    task_id TEXT PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    progress TEXT DEFAULT '',
+    file_name TEXT DEFAULT '',
+    work_dir TEXT DEFAULT '',
+    result TEXT DEFAULT '',       -- JSON string of the processing result
+    error TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+You can inspect the database directly:
+```bash
+sqlite3 data/popo_tasks.db "SELECT task_id, status, progress FROM tasks;"
+```
+
 ## Production Deployment
 
 For production use, consider:
 
-1. **Separate Worker Processes**: Run workers as separate processes instead of threads:
+1. **Separate Worker Processes**: Run workers as separate processes:
    ```bash
-   # Worker process 1
    python -c "from api.services.worker import run_worker; run_worker('worker-1')"
-   
-   # Worker process 2
-   python -c "from api.services.worker import run_worker; run_worker('worker-2')"
    ```
 
-2. **Redis Persistence**: Configure Redis AOF/RDB for task persistence
-3. **Task Cleanup**: Implement a cleanup job to remove old tasks/results
-4. **Reverse Proxy**: Nginx for load balancing and static file serving
-5. **Containerization**: Docker with GPU support for model inference
+2. **Task Cleanup**: Old completed/failed tasks are automatically cleaned up based on `POPO_TASK_TTL`
+
+3. **Database Backup**: The SQLite file is a single file, easy to backup:
+   ```bash
+   cp data/popo_tasks.db data/popo_tasks.db.backup
+   ```
+
+4. **Containerization**: Docker with GPU support for model inference
