@@ -1,0 +1,1 @@
+"""MinerU-Popo FastAPI service."""
