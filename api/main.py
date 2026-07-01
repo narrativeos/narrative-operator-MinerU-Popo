@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +49,19 @@ from api.services.queue import (
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database and start background workers on startup."""
+    init_db()
+    from api.services.worker import run_worker_async
+    run_worker_async()
+    yield
+
 app = FastAPI(
     title="MinerU-Popo API",
     description="Universal Post-Processing Model for Structured Document Parsing",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -359,18 +369,6 @@ async def process_json_data(request: ProcessRequest):
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
-
-
-# ========================
-# Startup / Shutdown
-# ========================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and start background workers on startup."""
-    init_db()
-    from api.services.worker import run_worker_async
-    run_worker_async()
 
 
 def run_server():

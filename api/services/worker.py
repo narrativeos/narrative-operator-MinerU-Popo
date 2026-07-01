@@ -16,6 +16,7 @@ from api.config import (
     SYNC_TIMEOUT,
 )
 from api.services.queue import (
+    init_db,
     pop_task,
     update_task_status,
     get_task_status,
@@ -120,6 +121,9 @@ def run_worker(worker_id: Optional[str] = None) -> None:
     """
     if not worker_id:
         worker_id = f"worker-{uuid.uuid4().hex[:8]}"
+
+    # Ensure database is initialized (important when running standalone)
+    init_db()
 
     print(f"[{worker_id}] Starting worker...")
 

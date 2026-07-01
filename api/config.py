@@ -36,7 +36,7 @@ SUPPORTED_MODELS = [
 
 # Server settings
 HOST = os.environ.get("POPO_API_HOST", "0.0.0.0")
-PORT = int(os.environ.get("POPO_API_PORT", "8000"))
+PORT = int(os.environ.get("POPO_API_PORT", "8440"))
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 # Worker settings
