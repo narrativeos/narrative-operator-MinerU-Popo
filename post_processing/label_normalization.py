@@ -456,15 +456,34 @@ def map_paddle_label(label: str) -> tuple[str, str]:
 
 class MineruReader(BaseReader):
     model_name = "mineru"
-    inner_dir = "vlm"
+    # Candidate subdirectories for MinerU output, tried in order.
+    # Newer MinerU uses "hybrid_auto", older versions use "vlm".
+    _INNER_DIR_CANDIDATES = ["hybrid_auto", "vlm", ""]
+
+    def _find_doc_root(self, doc_id: str) -> Path | None:
+        """Find the first existing doc root among candidate inner directories."""
+        doc_base = self.model_root / doc_id
+        for candidate in self._INNER_DIR_CANDIDATES:
+            candidate_root = doc_base / candidate if candidate else doc_base
+            if (
+                (candidate_root / f"{doc_id}_model.json").exists()
+                or (candidate_root / f"{doc_id}_middle.json").exists()
+                or (candidate_root / f"{doc_id}_content_list.json").exists()
+            ):
+                return candidate_root
+        return None
 
     def read_doc(self, doc_id: str) -> ReaderResult:
-        doc_root = self.model_root / doc_id / self.inner_dir if self.inner_dir else self.model_root / doc_id
+        doc_root = self._find_doc_root(doc_id)
+        if doc_root is None:
+            return ReaderResult(
+                self.model_name, doc_id, "missing",
+                message=f"Missing model files under {self.model_root / doc_id}",
+            )
+
         model_path = doc_root / f"{doc_id}_model.json"
         middle_path = doc_root / f"{doc_id}_middle.json"
         content_list_path = doc_root / f"{doc_id}_content_list.json"
-        if not model_path.exists() and not middle_path.exists() and not content_list_path.exists():
-            return ReaderResult(self.model_name, doc_id, "missing", message=f"Missing {model_path}")
 
         if model_path.exists():
             return self._read_model(doc_id, model_path)

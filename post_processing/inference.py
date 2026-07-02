@@ -30,6 +30,13 @@ def concatenate_pdf_pages_with_border(doc_label, pages, border_width=5, border_c
     """Filter related pages and synthesize them"""
     pdf_path = doc_label
     
+    # If PDF file doesn't exist, return a placeholder white image
+    if not os.path.isfile(pdf_path):
+        placeholder = Image.new('RGB', (100, 100), color='white')
+        buffered = io.BytesIO()
+        placeholder.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    
     doc = fitz.open(pdf_path)
     pil_images = []
     if not pages:

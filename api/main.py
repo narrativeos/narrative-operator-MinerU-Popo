@@ -87,19 +87,16 @@ def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[s
     normalize_dir = extract_dir / "normalized"
     pages = normalize_ocr_output(model_name, str(extract_dir), str(normalize_dir), doc_id)
 
-    # Step 2: Locate PDF inside extracted ZIP (required for VLM page rendering)
+    # Step 2: Locate PDF inside extracted ZIP (optional, for VLM page rendering)
     # Prefer *_origin.pdf over *_layout.pdf
     pdf_files = sorted(extract_dir.rglob("*.pdf"))
     pdf_path = None
     if pdf_files:
         origin = [p for p in pdf_files if "_origin" in p.stem]
         pdf_path = str(origin[0]) if origin else str(pdf_files[0])
-    if not pdf_path:
-        raise ValueError(
-            "No PDF file found in the uploaded ZIP. "
-            "A PDF is required for VLM page rendering during inference."
-        )
-    print(f"[pipeline] Found PDF: {pdf_path}")
+        print(f"[pipeline] Found PDF: {pdf_path}")
+    else:
+        print("[pipeline] No PDF found in ZIP, VLM page rendering will be skipped")
 
     # Step 3: Run inference
     from api.services.infer import run_inference
@@ -123,9 +120,6 @@ def _extract_and_prepare(file: UploadFile, doc_id: Optional[str] = None) -> tupl
     """
     task_id = uuid.uuid4().hex[:16]
 
-    if not doc_id:
-        doc_id = Path(file.filename).stem
-
     work_dir = get_temp_dir() / task_id
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -139,6 +133,19 @@ def _extract_and_prepare(file: UploadFile, doc_id: Optional[str] = None) -> tupl
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(extract_dir)
+
+    # Auto-detect doc_id from top-level directory inside the extracted ZIP
+    # (prefer actual directory name over ZIP filename when they differ)
+    if not doc_id:
+        top_dirs = [
+            entry.name.rstrip("/")
+            for entry in extract_dir.iterdir()
+            if entry.is_dir()
+        ]
+        if len(top_dirs) == 1:
+            doc_id = top_dirs[0]
+        else:
+            doc_id = Path(file.filename).stem
 
     return task_id, work_dir, extract_dir, doc_id
 
@@ -156,7 +163,7 @@ async def health_check():
 
     return HealthResponse(
         status="ok" if db_ok else "degraded",
-        redis_connected=db_ok,
+        db_connected=db_ok,
         queue_length=queue_len,
         workers_active=workers,
     )

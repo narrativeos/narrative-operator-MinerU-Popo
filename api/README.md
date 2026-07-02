@@ -70,7 +70,7 @@ Returns service status, database connection status, queue length, and active wor
 ```json
 {
   "status": "ok",
-  "redis_connected": true,
+  "db_connected": true,
   "queue_length": 0,
   "workers_active": 1,
   "supported_models": ["mineru", "monkeyocr", "PaddleOCR-VL-1.5", "dolphin", "glm-ocr"]

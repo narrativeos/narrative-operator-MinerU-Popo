@@ -127,6 +127,9 @@ export POPO_WORKER_CONCURRENCY="${POPO_WORKER_CONCURRENCY:-4}"
 export POPO_SYNC_TIMEOUT="${POPO_SYNC_TIMEOUT:-300}"
 export POPO_TASK_TTL="${POPO_TASK_TTL:-86400}"
 
+# Disable .pyc caching to avoid stale bytecode issues
+export PYTHONDONTWRITEBYTECODE=1
+
 # HuggingFace mirror & offline mode (avoid SSL timeout when loading model)
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"

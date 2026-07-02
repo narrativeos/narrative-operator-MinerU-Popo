@@ -70,7 +70,7 @@ class TaskResultResponse(BaseModel):
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = "ok"
-    redis_connected: bool = False
+    db_connected: bool = False
     queue_length: int = 0
     workers_active: int = 0
     supported_models: List[str] = [

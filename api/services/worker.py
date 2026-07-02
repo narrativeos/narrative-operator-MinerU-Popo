@@ -24,57 +24,6 @@ from api.services.queue import (
 )
 
 
-def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[str, Any]:
-    """
-    Run the full processing pipeline: normalize -> infer -> build tree.
-
-    Returns the final document tree dict.
-    """
-    # Add project paths
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
-    post_processing_dir = PROJECT_ROOT / "post_processing"
-    data_engine_dir = PROJECT_ROOT / "data_engine"
-
-    for d in [str(PROJECT_ROOT), str(post_processing_dir), str(data_engine_dir)]:
-        if d not in sys.path:
-            sys.path.insert(0, d)
-
-    # Step 1: Normalize labels
-    from api.services.normalize import normalize_ocr_output
-
-    normalize_dir = extract_dir / "normalized"
-    pages = normalize_ocr_output(model_name, str(extract_dir), str(normalize_dir), doc_id)
-
-    # Step 2: Locate PDF inside extracted ZIP (required for VLM page rendering)
-    # Prefer *_origin.pdf over *_layout.pdf
-    pdf_files = sorted(extract_dir.rglob("*.pdf"))
-    pdf_path = None
-    if pdf_files:
-        origin = [p for p in pdf_files if "_origin" in p.stem]
-        pdf_path = str(origin[0]) if origin else str(pdf_files[0])
-    if not pdf_path:
-        raise ValueError(
-            "No PDF file found in the uploaded ZIP. "
-            "A PDF is required for VLM page rendering during inference."
-        )
-    print(f"[worker:pipeline] Found PDF: {pdf_path}")
-
-    # Step 3: Run inference
-    from api.services.infer import run_inference
-
-    infer_dir = extract_dir / "inferred"
-    elements = run_inference(doc_id, pages, str(infer_dir), pdf_path=pdf_path)
-
-    # Step 4: Build tree
-    from api.services.tree_builder import build_tree
-
-    tree_dir = extract_dir / "tree"
-    txt_dir = extract_dir / "txt"
-    tree = build_tree(elements, str(tree_dir), str(txt_dir), doc_id)
-
-    return tree
-
-
 def process_task(task_id: str, worker_id: str) -> None:
     """
     Process a single task from the queue.
@@ -92,19 +41,53 @@ def process_task(task_id: str, worker_id: str) -> None:
     work_dir = task.get("work_dir", "")
 
     try:
-        update_task_status(task_id, "processing", "Extracting files...")
+        # Ensure project paths are available
+        PROJECT_ROOT = Path(__file__).resolve().parents[2]
+        post_processing_dir = PROJECT_ROOT / "post_processing"
+        data_engine_dir = PROJECT_ROOT / "data_engine"
+        for d in [str(PROJECT_ROOT), str(post_processing_dir), str(data_engine_dir)]:
+            if d not in sys.path:
+                sys.path.insert(0, d)
 
         extract_dir = Path(work_dir) / "extracted"
 
-        update_task_status(task_id, "processing", "Normalizing labels...")
+        # Step 1: Normalize labels (5% -> 15%)
+        update_task_status(task_id, "processing", "[5%] Normalizing labels...")
+        from api.services.normalize import normalize_ocr_output
+        normalize_dir = extract_dir / "normalized"
+        pages = normalize_ocr_output(model, str(extract_dir), str(normalize_dir), doc_id)
 
-        update_task_status(task_id, "processing", "Running inference...")
+        total_pages = len(pages)
+        update_task_status(
+            task_id, "processing",
+            f"[15%] Labels normalized ({total_pages} pages), starting inference..."
+        )
 
-        tree = _process_pipeline(doc_id, model, extract_dir)
+        # Step 2: Run inference (15% -> 85%) — the heavy step
+        from api.services.infer import run_inference
+        pdf_files = sorted(extract_dir.rglob("*.pdf"))
+        pdf_path = None
+        if pdf_files:
+            origin = [p for p in pdf_files if "_origin" in p.stem]
+            pdf_path = str(origin[0]) if origin else str(pdf_files[0])
 
-        update_task_status(task_id, "processing", "Building document tree...")
+        infer_dir = extract_dir / "inferred"
+        elements = run_inference(doc_id, pages, str(infer_dir), pdf_path=pdf_path)
 
-        # Save result
+        element_count = len(elements) if isinstance(elements, list) else 0
+        update_task_status(
+            task_id, "processing",
+            f"[85%] Inference done ({total_pages} pages, {element_count} elements), building tree..."
+        )
+
+        # Step 3: Build document tree (85% -> 95%)
+        from api.services.tree_builder import build_tree
+        tree_dir = extract_dir / "tree"
+        txt_dir = extract_dir / "txt"
+        tree = build_tree(elements, str(tree_dir), str(txt_dir), doc_id)
+
+        # Save result (95% -> 100%)
+        update_task_status(task_id, "processing", "[95%] Saving result...")
         result = {
             "doc_id": doc_id,
             "status": "success",
@@ -113,7 +96,7 @@ def process_task(task_id: str, worker_id: str) -> None:
         }
         save_task_result(task_id, result)
 
-        update_task_status(task_id, "completed", "Processing completed")
+        update_task_status(task_id, "completed", f"[100%] Processing completed ({total_pages} pages)")
 
     except Exception as e:
         error_msg = str(e)
