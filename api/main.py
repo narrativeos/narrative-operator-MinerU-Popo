@@ -1,5 +1,7 @@
 """FastAPI application for MinerU-Popo post-processing service with SQLite queue."""
 
+import asyncio
+import concurrent.futures
 import json
 import os
 import shutil
@@ -85,13 +87,27 @@ def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[s
     normalize_dir = extract_dir / "normalized"
     pages = normalize_ocr_output(model_name, str(extract_dir), str(normalize_dir), doc_id)
 
-    # Step 2: Run inference
+    # Step 2: Locate PDF inside extracted ZIP (required for VLM page rendering)
+    # Prefer *_origin.pdf over *_layout.pdf
+    pdf_files = sorted(extract_dir.rglob("*.pdf"))
+    pdf_path = None
+    if pdf_files:
+        origin = [p for p in pdf_files if "_origin" in p.stem]
+        pdf_path = str(origin[0]) if origin else str(pdf_files[0])
+    if not pdf_path:
+        raise ValueError(
+            "No PDF file found in the uploaded ZIP. "
+            "A PDF is required for VLM page rendering during inference."
+        )
+    print(f"[pipeline] Found PDF: {pdf_path}")
+
+    # Step 3: Run inference
     from api.services.infer import run_inference
 
     infer_dir = extract_dir / "inferred"
-    elements = run_inference(doc_id, pages, str(infer_dir))
+    elements = run_inference(doc_id, pages, str(infer_dir), pdf_path=pdf_path)
 
-    # Step 3: Build tree
+    # Step 4: Build tree
     from api.services.tree_builder import build_tree
 
     tree_dir = extract_dir / "tree"
@@ -109,9 +125,6 @@ def _extract_and_prepare(file: UploadFile, doc_id: Optional[str] = None) -> tupl
 
     if not doc_id:
         doc_id = Path(file.filename).stem
-        for suffix in ["_model", "_middle", "_content_list"]:
-            if doc_id.endswith(suffix):
-                doc_id = doc_id[: -len(suffix)]
 
     work_dir = get_temp_dir() / task_id
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -174,6 +187,10 @@ async def process_ocr_zip(
     task_id, work_dir, extract_dir, final_doc_id = _extract_and_prepare(file, doc_id)
 
     try:
+        # inference.main() uses asyncio.run() internally which conflicts
+        # with FastAPI's async event loop. nest_asyncio allows nesting.
+        import nest_asyncio
+        nest_asyncio.apply()
         tree = _process_pipeline(final_doc_id, model, extract_dir)
 
         return ProcessResponse(
@@ -349,9 +366,11 @@ async def process_json_data(request: ProcessRequest):
             request.model, request.pages, str(normalize_dir), request.doc_id
         )
 
-        # Step 2: Run inference
+        # Step 2: Run inference (in thread to avoid nested event loop)
         infer_dir = work_dir / "inferred"
-        elements = run_inference(request.doc_id, pages, str(infer_dir))
+        elements = await asyncio.to_thread(
+            run_inference, request.doc_id, pages, str(infer_dir)
+        )
 
         # Step 3: Build tree
         tree_dir = work_dir / "tree"

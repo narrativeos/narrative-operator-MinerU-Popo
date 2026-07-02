@@ -5,10 +5,15 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
-def run_inference(doc_id: str, pages: Dict[str, List[Dict[str, Any]]], output_dir: str) -> List[Dict[str, Any]]:
+def run_inference(
+    doc_id: str,
+    pages: Dict[str, List[Dict[str, Any]]],
+    output_dir: str,
+    pdf_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """
     Run MinerU-Popo inference on normalized pages data.
     
@@ -16,6 +21,10 @@ def run_inference(doc_id: str, pages: Dict[str, List[Dict[str, Any]]], output_di
         doc_id: Document identifier
         pages: Dict mapping page numbers to lists of blocks
         output_dir: Directory to write inference output
+        pdf_path: Path to original PDF file for page image rendering.
+                  Passed as input_label to inference.main(). If None,
+                  falls back to doc_id (may cause inference failure
+                  if the VLM needs page images).
         
     Returns:
         List of processed elements with inference results
@@ -30,16 +39,26 @@ def run_inference(doc_id: str, pages: Dict[str, List[Dict[str, Any]]], output_di
     
     os.makedirs(output_dir, exist_ok=True)
     
+    # Use pdf_path as input_label if available, otherwise fall back to doc_id
+    input_label = pdf_path or doc_id
+    
     # Run inference
     run_one_document(
-        doc_id=doc_id,
-        pages=copy.deepcopy(pages),
-        output_dir=output_dir,
+        input_label,
+        copy.deepcopy(pages),
+        output_dir,
         raw_output_dir=None,
     )
     
-    # Read the output
+    # Read the output (inference.main saves as {safe_doc_stem(input_label)}.json)
     output_path = Path(output_dir) / f"{doc_id}.json"
+    if not output_path.exists():
+        # Try alternative filename based on pdf_path stem
+        if pdf_path:
+            alt_stem = Path(pdf_path).stem
+            alt_path = Path(output_dir) / f"{alt_stem}.json"
+            if alt_path.exists():
+                output_path = alt_path
     if not output_path.exists():
         raise FileNotFoundError(f"Inference output not found: {output_path}")
     

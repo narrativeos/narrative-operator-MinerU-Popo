@@ -83,21 +83,35 @@ def _transformers_generate(prompt, base64_image):
     if _TRANSFORMERS_MODEL is None or _TRANSFORMERS_PROCESSOR is None:
         # 根据设备选择合适的 dtype
         # MPS 不支持 bfloat16，使用 float16 作为替代
+        # CPU 上 bfloat16 需要软件模拟（极慢），使用 float32
         if device == "mps":
             torch_dtype = torch.float16
+        elif device == "cpu":
+            torch_dtype = torch.float32
         else:
             torch_dtype = torch.bfloat16
             
-        # 先加载到 CPU，再移动到目标设备，避免 MPS 的 device_map 内存计算问题
-        _TRANSFORMERS_MODEL = Qwen3VLForConditionalGeneration.from_pretrained(
-            model_path,
-            torch_dtype=torch_dtype,
-            device_map="cpu",
-        )
+        # Load model directly on the target device
         if device == "mps":
-            _TRANSFORMERS_MODEL = _TRANSFORMERS_MODEL.to("mps")
+            _TRANSFORMERS_MODEL = Qwen3VLForConditionalGeneration.from_pretrained(
+                model_path,
+                torch_dtype=torch_dtype,
+                device_map="mps",
+                low_cpu_mem_usage=True,
+            )
         elif device == "cuda":
-            _TRANSFORMERS_MODEL = _TRANSFORMERS_MODEL.to("cuda")
+            _TRANSFORMERS_MODEL = Qwen3VLForConditionalGeneration.from_pretrained(
+                model_path,
+                torch_dtype=torch_dtype,
+                device_map="cuda",
+                low_cpu_mem_usage=True,
+            )
+        else:
+            _TRANSFORMERS_MODEL = Qwen3VLForConditionalGeneration.from_pretrained(
+                model_path,
+                torch_dtype=torch_dtype,
+                device_map="cpu",
+            )
         _TRANSFORMERS_PROCESSOR = AutoProcessor.from_pretrained(
             model_path,
             tokenizer_kwargs={"padding_side": "left"},
@@ -130,7 +144,7 @@ def _transformers_generate(prompt, base64_image):
     with torch.no_grad():
         generated_ids = _TRANSFORMERS_MODEL.generate(**inputs, max_new_tokens=max_new_tokens)
     generated_ids_trimmed = [
-        out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
     ]
     output_text = _TRANSFORMERS_PROCESSOR.batch_decode(
         generated_ids_trimmed,

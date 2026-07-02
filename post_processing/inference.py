@@ -86,6 +86,12 @@ def concatenate_pdf_pages_with_border(doc_label, pages, border_width=5, border_c
     
     buffered.seek(0)
     buffered.truncate(0)
+    # Resize large images to avoid MPS buffer overflow during VLM encoding
+    max_dim = 2048
+    if max(result.width, result.height) > max_dim:
+        ratio = max_dim / max(result.width, result.height)
+        new_size = (int(result.width * ratio), int(result.height * ratio))
+        result = result.resize(new_size, Image.LANCZOS)
     # Try JPEG first, fallback to PNG if JPEG fails
     try:
         result.save(buffered, format="JPEG", quality=95)

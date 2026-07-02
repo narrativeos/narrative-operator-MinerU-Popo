@@ -45,13 +45,27 @@ def _process_pipeline(doc_id: str, model_name: str, extract_dir: Path) -> Dict[s
     normalize_dir = extract_dir / "normalized"
     pages = normalize_ocr_output(model_name, str(extract_dir), str(normalize_dir), doc_id)
 
-    # Step 2: Run inference
+    # Step 2: Locate PDF inside extracted ZIP (required for VLM page rendering)
+    # Prefer *_origin.pdf over *_layout.pdf
+    pdf_files = sorted(extract_dir.rglob("*.pdf"))
+    pdf_path = None
+    if pdf_files:
+        origin = [p for p in pdf_files if "_origin" in p.stem]
+        pdf_path = str(origin[0]) if origin else str(pdf_files[0])
+    if not pdf_path:
+        raise ValueError(
+            "No PDF file found in the uploaded ZIP. "
+            "A PDF is required for VLM page rendering during inference."
+        )
+    print(f"[worker:pipeline] Found PDF: {pdf_path}")
+
+    # Step 3: Run inference
     from api.services.infer import run_inference
 
     infer_dir = extract_dir / "inferred"
-    elements = run_inference(doc_id, pages, str(infer_dir))
+    elements = run_inference(doc_id, pages, str(infer_dir), pdf_path=pdf_path)
 
-    # Step 3: Build tree
+    # Step 4: Build tree
     from api.services.tree_builder import build_tree
 
     tree_dir = extract_dir / "tree"

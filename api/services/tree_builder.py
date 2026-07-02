@@ -38,8 +38,12 @@ def build_tree(elements: list[Dict[str, Any]], output_dir: str, txt_dir: str, do
     
     construct_json_tree(str(temp_input), output_dir, txt_dir)
     
-    # Read and return the result
+    # construct_json_tree writes to {output_dir}/{basename(input_file)}
+    # i.e. {doc_id}_input.json — look for that and also the plain doc_id
     tree_path = Path(output_dir) / f"{doc_id}.json"
+    alt_tree_path = Path(output_dir) / f"{doc_id}_input.json"
+    if not tree_path.exists() and alt_tree_path.exists():
+        tree_path = alt_tree_path
     if not tree_path.exists():
         raise FileNotFoundError(f"Tree output not found: {tree_path}")
     
