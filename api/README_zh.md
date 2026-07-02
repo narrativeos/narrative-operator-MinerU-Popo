@@ -1,81 +1,81 @@
-# MinerU-Popo FastAPI Service
+# MinerU-Popo FastAPI 服务
 
 <p align="center">
   📖 <a href="./README.md"><b>English</b></a> &nbsp;|&nbsp; <a href="./README_zh.md"><b>简体中文</b></a>
 </p>
 
-FastAPI wrapper for the MinerU-Popo document post-processing pipeline with SQLite-based task queue.
+MinerU-Popo 文档后处理流水线的 FastAPI 封装，基于 SQLite 任务队列。
 
-## Installation
+## 安装
 
 ```bash
 pip install -r api/requirements.txt
 ```
 
-Make sure the main project dependencies are also installed:
+确保主项目依赖也已安装：
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Prerequisites
+## 前置条件
 
-No external services required. The task queue uses SQLite (built into Python) for persistence.
+无需外部服务。任务队列使用 Python 内置的 SQLite 持久化。
 
-## Configuration
+## 配置
 
-Set environment variables before starting:
+启动前设置环境变量：
 
 ```bash
-# Model path (required for inference)
-export POPO_MODEL_PATH=/path/to/Mineru-Popo
+# 模型路径（推理必需）
+export POPO_MODEL_PATH=/path/to/MinerU-Popo
 
-# SQLite database path (optional, defaults to ./data/popo_tasks.db)
+# SQLite 数据库路径（可选，默认 ./data/popo_tasks.db）
 export POPO_SQLITE_PATH=./data/popo_tasks.db
 
-# Server settings (optional)
+# 服务器设置（可选）
 export POPO_API_HOST=0.0.0.0
-export POPO_API_PORT=8000
+export POPO_API_PORT=8440
 
-# Worker settings (optional)
+# Worker 设置（可选）
 export POPO_WORKER_CONCURRENCY=4
 export POPO_SYNC_TIMEOUT=300
 export POPO_TASK_TTL=86400
 ```
 
-## Running the Server
+## 启动服务
 
 ```bash
-# Development (starts API server + background worker)
+# 开发模式（启动 API 服务器 + 后台 Worker）
 python -m api.main
 
-# Production with uvicorn
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+# 生产模式（uvicorn）
+uvicorn api.main:app --host 0.0.0.0 --port 8440 --workers 4
 
-# Worker only (separate process)
+# 仅 Worker（独立进程）
 python -c "from api.services.worker import run_worker; run_worker()"
 ```
 
-On startup, the server automatically:
-1. Initializes the SQLite database
-2. Starts a background worker thread that processes tasks from the queue
+启动时服务器自动：
+1. 初始化 SQLite 数据库
+2. 启动后台 Worker 线程，从队列中取任务处理
 
-## API Endpoints
+## API 接口
 
-### 1. Health Check
+### 1. 健康检查
 
 ```
 GET /health
 ```
 
-Returns service status, database connectivity, queue length, and active worker count.
+返回服务状态、数据库连接、队列长度和活跃 Worker 数。
 
-**Example:**
+**示例：**
 ```bash
 curl -s http://localhost:8440/health | python -m json.tool
 ```
 
-**Response:**
+**响应：**
 ```json
 {
   "status": "ok",
@@ -88,24 +88,24 @@ curl -s http://localhost:8440/health | python -m json.tool
 
 ---
 
-### 2. Synchronous Processing
+### 2. 同步处理
 
 ```
 POST /process
 Content-Type: multipart/form-data
 ```
 
-| Field | Type | Required | Description |
+| 字段 | 类型 | 必填 | 说明 |
 |-------|------|----------|-------------|
-| `file` | File | Yes | ZIP archive containing OCR output |
-| `model` | String | Yes | OCR model: `mineru`, `monkeyocr`, `PaddleOCR-VL-1.5`, `dolphin`, `glm-ocr` |
-| `doc_id` | String | No | Document ID, auto-detected from ZIP structure if omitted |
+| `file` | File | 是 | 包含 OCR 输出的 ZIP 文件 |
+| `model` | String | 是 | OCR 模型：`mineru`、`monkeyocr`、`PaddleOCR-VL-1.5`、`dolphin`、`glm-ocr` |
+| `doc_id` | String | 否 | 文档 ID，不填则从 ZIP 结构自动推断 |
 
-Uploads a ZIP, **blocks until the full pipeline completes**, then returns the document tree.
+上传 ZIP，**阻塞等待完整流水线执行完毕**，在同一响应中返回文档树。
 
 > 适合小文档或调试。大文档建议用异步接口 `POST /tasks`。
 
-**Example:**
+**示例：**
 ```bash
 curl -X POST http://localhost:8440/process \
   -F "file=@page_2_mineru.zip" \
@@ -114,7 +114,7 @@ curl -X POST http://localhost:8440/process \
   -o result.json
 ```
 
-**Response (200):**
+**响应（200）：**
 ```json
 {
   "doc_id": "page_2",
@@ -145,22 +145,22 @@ curl -X POST http://localhost:8440/process \
 
 ---
 
-### 3. Submit Async Task (POST /tasks)
+### 3. 提交异步任务（POST /tasks）
 
 ```
 POST /tasks
 Content-Type: multipart/form-data
 ```
 
-| Field | Type | Required | Description |
+| 字段 | 类型 | 必填 | 说明 |
 |-------|------|----------|-------------|
-| `file` | File | Yes | ZIP archive containing OCR output |
-| `model` | String | Yes | OCR model name |
-| `doc_id` | String | No | Document ID, auto-detected if omitted |
+| `file` | File | 是 | 包含 OCR 输出的 ZIP 文件 |
+| `model` | String | 是 | OCR 模型名称 |
+| `doc_id` | String | 否 | 文档 ID，不填则自动推断 |
 
-Uploads a ZIP and **returns immediately** with a `task_id`. The task is queued in SQLite and processed by a background worker.
+上传 ZIP 后**立即返回** `task_id`。任务进入 SQLite 队列，由后台 Worker 异步处理。
 
-**Example:**
+**示例：**
 ```bash
 curl -X POST http://localhost:8440/tasks \
   -F "file=@page_2_mineru.zip" \
@@ -168,7 +168,7 @@ curl -X POST http://localhost:8440/tasks \
   -F "doc_id=page_2"
 ```
 
-**Response (202 Accepted):**
+**响应（202 Accepted）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -179,20 +179,20 @@ curl -X POST http://localhost:8440/tasks \
 
 ---
 
-### 4. Query Task Status & Progress (GET /tasks/{task_id})
+### 4. 查询任务状态与进度（GET /tasks/{task_id}）
 
 ```
 GET /tasks/{task_id}
 ```
 
-Returns the current status and progress of an async task. **Poll this endpoint** to track real-time progress.
+返回异步任务的当前状态和进度。**轮询此接口**可实时追踪处理进度。
 
-**Example:**
+**示例：**
 ```bash
-# Single query
+# 单次查询
 curl -s http://localhost:8440/tasks/13a6fe195a844709 | python -m json.tool
 
-# Polling loop (bash)
+# 轮询脚本（bash）
 TASK_ID="13a6fe195a844709"
 while true; do
   RESP=$(curl -s "http://localhost:8440/tasks/$TASK_ID")
@@ -203,7 +203,7 @@ while true; do
 done
 ```
 
-**Response (processing):**
+**响应（处理中）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -217,7 +217,7 @@ done
 }
 ```
 
-**Response (completed):**
+**响应（已完成）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -231,7 +231,7 @@ done
 }
 ```
 
-#### Progress Lifecycle
+#### 进度生命周期
 
 | 百分比 | progress 示例 | 阶段 | 耗时特征 |
 |--------|-------------|------|---------|
@@ -248,7 +248,7 @@ done
 
 > **注意**：快速阶段（<5s）可能在轮询间隔内被跳过，属于正常现象。
 
-**Status 状态机：**
+**状态机：**
 ```
 pending → processing → completed
                      → failed
@@ -256,20 +256,20 @@ pending → processing → completed
 
 ---
 
-### 5. Get Task Result (GET /tasks/{task_id}/result)
+### 5. 获取任务结果（GET /tasks/{task_id}/result）
 
 ```
 GET /tasks/{task_id}/result
 ```
 
-Returns the final document tree. Only available after the task reaches `completed` status.
+返回最终的文档树。仅在任务达到 `completed` 状态后可用。
 
-**Example:**
+**示例：**
 ```bash
 curl -s http://localhost:8440/tasks/13a6fe195a844709/result | python -m json.tool
 ```
 
-**Response (completed):**
+**响应（已完成）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -297,7 +297,7 @@ curl -s http://localhost:8440/tasks/13a6fe195a844709/result | python -m json.too
 }
 ```
 
-**Response (still processing):**
+**响应（处理中）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -306,7 +306,7 @@ curl -s http://localhost:8440/tasks/13a6fe195a844709/result | python -m json.too
 }
 ```
 
-**Response (pending):**
+**响应（排队中）：**
 ```json
 {
   "task_id": "13a6fe195a844709",
@@ -317,16 +317,16 @@ curl -s http://localhost:8440/tasks/13a6fe195a844709/result | python -m json.too
 
 ---
 
-### 6. JSON Input (Synchronous)
+### 6. JSON 输入（同步）
 
 ```
 POST /process/json
 Content-Type: application/json
 ```
 
-Submit pre-normalized pages data directly (skip label normalization step).
+直接提交已归一化的页面数据（跳过标签归一化步骤）。
 
-**Example:**
+**示例：**
 ```bash
 curl -X POST http://localhost:8440/process/json \
   -H "Content-Type: application/json" \
@@ -335,7 +335,7 @@ curl -X POST http://localhost:8440/process/json \
     "model": "mineru",
     "pages": {
       "1": [
-        {"type": "title", "content": "Chapter 1", "bbox": [0.1, 0.1, 0.5, 0.15]}
+        {"type": "title", "content": "第一章", "bbox": [0.1, 0.1, 0.5, 0.15]}
       ]
     }
   }'
@@ -343,43 +343,43 @@ curl -X POST http://localhost:8440/process/json \
 
 ---
 
-## Document Tree Node Structure
+## 文档树节点结构
 
-Each node in the `tree` has 8 fields:
+`tree` 中每个节点包含 8 个字段：
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 |-------|------|-------------|
-| `type` | string | Node type: `root`, `text`, `table`, `image`, `page_number`, `header`, `footer`, ... |
-| `title` | string | Section title, or `"Default Title"` if none detected |
-| `metadata` | string | Footnotes, supplementary info |
-| `content` | string | Body text, segments separated by `<\|txt_split\|>` or `<\|txt_contd\|>` |
-| `level` | int | Heading level (1=H1, 2=H2, ...), -1 for non-headings |
-| `location` | array | `[{bbox: [x1,y1,x2,y2], page: N}]` — normalized coordinates (0-1) |
-| `block_ids` | array | Traceable back to original OCR output block IDs |
-| `children` | array | Recursive child nodes of the same structure |
+| `type` | string | 节点类型：`root`、`text`、`table`、`image`、`page_number`、`header`、`footer` 等 |
+| `title` | string | 章节标题，未检测到时为 `"Default Title"` |
+| `metadata` | string | 脚注、补充信息 |
+| `content` | string | 正文内容，段落间以 `<\|txt_split\|>` 或 `<\|txt_contd\|>` 分隔 |
+| `level` | int | 标题层级（1=一级标题, 2=二级标题…），-1 表示非标题元素 |
+| `location` | array | `[{bbox: [x1,y1,x2,y2], page: N}]` — 归一化坐标（0-1） |
+| `block_ids` | array | 可追溯到原始 OCR 输出的块 ID |
+| `children` | array | 子节点（递归同构） |
 
-## ZIP File Structure
+## ZIP 文件结构
 
-The ZIP should contain OCR output in the format expected by each model. The `doc_id` is auto-detected from the top-level directory inside the ZIP (falls back to ZIP filename stem).
+ZIP 应包含各模型对应格式的 OCR 输出。`doc_id` 从 ZIP 内顶层目录名自动推断（回退到 ZIP 文件名）。
 
 ### mineru
 
-Newer MinerU uses `hybrid_auto/`, older versions use `vlm/`. Both are auto-detected.
+新版 MinerU 使用 `hybrid_auto/`，旧版使用 `vlm/`，两者均自动探测。
 
 ```
 {zip_root}/
 └── {doc_id}/
-    └── hybrid_auto/          ← or vlm/ (auto-detected)
-        ├── {doc_id}_model.json     ← preferred
-        ├── {doc_id}_middle.json    ← fallback
+    └── hybrid_auto/          ← 或 vlm/（自动探测）
+        ├── {doc_id}_model.json     ← 优先使用
+        ├── {doc_id}_middle.json    ← 回退
         ├── {doc_id}_content_list.json
-        ├── {doc_id}_origin.pdf     ← VLM page rendering (optional)
+        ├── {doc_id}_origin.pdf     ← VLM 页面渲染（可选）
         ├── {doc_id}_layout.pdf
         └── images/
             └── *.jpg
 ```
 
-**Example** (what we tested):
+**实测示例：**
 ```
 page_2_mineru.zip
 └── page_2/
@@ -389,32 +389,32 @@ page_2_mineru.zip
         ├── page_2_content_list.json
         ├── page_2_origin.pdf
         ├── page_2_layout.pdf
-        └── images/ (27 jpg files)
+        └── images/（27 个 jpg 文件）
 ```
 
-### Other Models
+### 其他模型
 
-| Model | Key Files |
+| 模型 | 关键文件 |
 |-------|----------|
 | `monkeyocr` | `{doc_id}_middle.json` |
-| `PaddleOCR-VL-1.5` | `layout_parsing.json` or `{doc_id}_*_res.json` |
+| `PaddleOCR-VL-1.5` | `layout_parsing.json` 或 `{doc_id}_*_res.json` |
 | `dolphin` | `recognition_json/{doc_id}.json` |
-| `glm-ocr` | `{doc_id}_model.json` or `page_*.json` |
+| `glm-ocr` | `{doc_id}_model.json` 或 `page_*.json` |
 
-## Architecture
+## 架构
 
 ```
-Client → FastAPI → SQLite Queue → Worker → SQLite Result
-     │            │              │
-     │         Task Status    Processing
-     │         Task Result    Pipeline
-     │
-     └→ Sync Response (for /process)
+客户端 → FastAPI → SQLite 队列 → Worker → SQLite 结果
+   │              │              │
+   │          任务状态       处理流水线
+   │          任务结果
+   │
+   └→ 同步响应（/process）
 ```
 
-## Database Schema
+## 数据库结构
 
-The SQLite database (`popo_tasks.db`) contains a single `tasks` table:
+SQLite 数据库（`popo_tasks.db`）包含单个 `tasks` 表：
 
 ```sql
 CREATE TABLE tasks (
@@ -425,32 +425,30 @@ CREATE TABLE tasks (
     progress TEXT DEFAULT '',
     file_name TEXT DEFAULT '',
     work_dir TEXT DEFAULT '',
-    result TEXT DEFAULT '',       -- JSON string of the processing result
+    result TEXT DEFAULT '',       -- 处理结果的 JSON 字符串
     error TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-You can inspect the database directly:
+可直接查看数据库：
 ```bash
 sqlite3 data/popo_tasks.db "SELECT task_id, status, progress FROM tasks;"
 ```
 
-## Production Deployment
+## 生产部署
 
-For production use, consider:
+生产环境建议：
 
-1. **Separate Worker Processes**: Run workers as separate processes:
+1. **独立 Worker 进程**：将 Worker 作为独立进程运行：
    ```bash
    python -c "from api.services.worker import run_worker; run_worker('worker-1')"
    ```
 
-2. **Task Cleanup**: Old completed/failed tasks are automatically cleaned up based on `POPO_TASK_TTL`
+2. **任务清理**：根据 `POPO_TASK_TTL` 自动清理过期的已完成/失败任务
 
-3. **Database Backup**: The SQLite file is a single file, easy to backup:
+3. **数据库备份**：SQLite 是单文件，备份简单：
    ```bash
    cp data/popo_tasks.db data/popo_tasks.db.backup
    ```
-
-4. **Containerization**: Docker with GPU support for model inference
