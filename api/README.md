@@ -64,7 +64,12 @@ On startup, the server automatically:
 GET /health
 ```
 
-Returns service status, database connection status, queue length, and active workers.
+Returns service status, database connectivity, queue length, and active worker count.
+
+**Example:**
+```bash
+curl -s http://localhost:8440/health | python -m json.tool
+```
 
 **Response:**
 ```json
@@ -77,118 +82,212 @@ Returns service status, database connection status, queue length, and active wor
 }
 ```
 
+---
+
 ### 2. Synchronous Processing
 
 ```
 POST /process
 Content-Type: multipart/form-data
-
-- file: ZIP archive containing OCR output files
-- model: OCR model name (mineru, monkeyocr, PaddleOCR-VL-1.5, dolphin, glm-ocr)
-- doc_id: (optional) Document identifier, inferred from filename if not provided
 ```
 
-Submits a ZIP with OCR output, **waits for the full pipeline to finish**, and returns the final document tree in the same response. Suitable for small documents.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | ZIP archive containing OCR output |
+| `model` | String | Yes | OCR model: `mineru`, `monkeyocr`, `PaddleOCR-VL-1.5`, `dolphin`, `glm-ocr` |
+| `doc_id` | String | No | Document ID, auto-detected from ZIP structure if omitted |
+
+Uploads a ZIP, **blocks until the full pipeline completes**, then returns the document tree.
+
+> 适合小文档或调试。大文档建议用异步接口 `POST /tasks`。
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/process \
-  -F "file=@ocr_output.zip" \
+curl -X POST http://localhost:8440/process \
+  -F "file=@page_2_mineru.zip" \
   -F "model=mineru" \
-  -F "doc_id=my_document"
+  -F "doc_id=page_2" \
+  -o result.json
 ```
 
-**Response:**
+**Response (200):**
 ```json
 {
-  "doc_id": "my_document",
+  "doc_id": "page_2",
   "status": "success",
   "message": "Document processed successfully",
-  "tree": { ... }
+  "tree": {
+    "type": "root",
+    "title": "",
+    "level": 0,
+    "children": [
+      {
+        "type": "text",
+        "title": "Default Title",
+        "level": 1,
+        "content": "...<|txt_split|>...",
+        "location": [{"bbox": [0.196, 0.866, 0.298, 0.91], "page": 1}],
+        "block_ids": [1, 2, 3]
+      },
+      {
+        "type": "page_number",
+        "title": "Page 4 - page_number",
+        "content": "006"
+      }
+    ]
+  }
 }
 ```
 
-### 3. Submit Async Task
+---
+
+### 3. Submit Async Task (POST /tasks)
 
 ```
 POST /tasks
 Content-Type: multipart/form-data
-
-- file: ZIP archive containing OCR output files
-- model: OCR model name
-- doc_id: (optional) Document identifier
 ```
 
-Uploads a ZIP with OCR output and **returns immediately** with a task ID. The task is stored in SQLite and processed by a background worker.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | ZIP archive containing OCR output |
+| `model` | String | Yes | OCR model name |
+| `doc_id` | String | No | Document ID, auto-detected if omitted |
+
+Uploads a ZIP and **returns immediately** with a `task_id`. The task is queued in SQLite and processed by a background worker.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/tasks \
-  -F "file=@ocr_output.zip" \
-  -F "model=mineru"
+curl -X POST http://localhost:8440/tasks \
+  -F "file=@page_2_mineru.zip" \
+  -F "model=mineru" \
+  -F "doc_id=page_2"
 ```
 
 **Response (202 Accepted):**
 ```json
 {
-  "task_id": "a1b2c3d4e5f6",
+  "task_id": "13a6fe195a844709",
   "status": "pending",
   "message": "Task submitted successfully"
 }
 ```
 
-### 4. Get Task Status
+---
+
+### 4. Query Task Status & Progress (GET /tasks/{task_id})
 
 ```
 GET /tasks/{task_id}
 ```
 
-Returns the current status of an async task.
+Returns the current status and progress of an async task. **Poll this endpoint** to track real-time progress.
 
 **Example:**
 ```bash
-curl http://localhost:8000/tasks/a1b2c3d4e5f6
+# Single query
+curl -s http://localhost:8440/tasks/13a6fe195a844709 | python -m json.tool
+
+# Polling loop (bash)
+TASK_ID="13a6fe195a844709"
+while true; do
+  RESP=$(curl -s "http://localhost:8440/tasks/$TASK_ID")
+  echo "$RESP" | python -c "import sys,json; d=json.load(sys.stdin); print(d['status'], d['progress'])"
+  st=$(echo "$RESP" | python -c "import sys,json; print(json.load(sys.stdin)['status'])")
+  [ "$st" = "completed" ] || [ "$st" = "failed" ] && break
+  sleep 5
+done
 ```
 
-**Response:**
+**Response (processing):**
 ```json
 {
-  "task_id": "a1b2c3d4e5f6",
+  "task_id": "13a6fe195a844709",
   "status": "processing",
-  "progress": "Running inference...",
-  "created_at": "2024-01-01T00:00:00",
-  "updated_at": "2024-01-01T00:05:00",
-  "doc_id": "my_document",
+  "progress": "[60%] Image-text association (1 chunks)",
+  "created_at": "2026-07-02T15:10:37",
+  "updated_at": "2026-07-02T15:13:00",
+  "doc_id": "page_2",
   "model": "mineru",
   "error": null
 }
 ```
 
-**Status values:** `pending`, `processing`, `completed`, `failed`
+**Response (completed):**
+```json
+{
+  "task_id": "13a6fe195a844709",
+  "status": "completed",
+  "progress": "[100%] Processing completed (4 pages)",
+  "created_at": "2026-07-02T15:10:37",
+  "updated_at": "2026-07-02T15:14:00",
+  "doc_id": "page_2",
+  "model": "mineru",
+  "error": null
+}
+```
 
-### 5. Get Task Result
+#### Progress Lifecycle
+
+| 百分比 | progress 示例 | 阶段 | 耗时特征 |
+|--------|-------------|------|---------|
+| — | `Task queued` | 入队等待 | 瞬间 |
+| `[5%]` | `Normalizing labels...` | 标签归一化 | 1-2s |
+| `[15%]` | `Labels normalized (4 pages), starting inference...` | 归一化完成 | 可观测 |
+| `[20%]` | `Text truncation analysis (3 chunks)` | 文本截断分析 | 取决于 chunk 数 |
+| `[40%]` | `Title hierarchy analysis (2 chunks)` | 标题层级分析 | 取决于 chunk 数 |
+| `[60%]` | `Image-text association (1 chunks)` | 图文关联分析 | **最耗时阶段** |
+| `[75%]` | `Image-text association complete` | 关联完成 | 瞬间 |
+| `[85%]` | `Inference done (4 pages, 48 elements), building tree...` | 推理完成 | 可观测 |
+| `[95%]` | `Saving result...` | 构建树 + 保存 | 瞬间 |
+| `[100%]` | `Processing completed (4 pages)` | 完成 | 终态 |
+
+> **注意**：快速阶段（<5s）可能在轮询间隔内被跳过，属于正常现象。
+
+**Status 状态机：**
+```
+pending → processing → completed
+                     → failed
+```
+
+---
+
+### 5. Get Task Result (GET /tasks/{task_id}/result)
 
 ```
 GET /tasks/{task_id}/result
 ```
 
-Returns the final processing result (document tree). If the task is still pending or processing, returns the current status.
+Returns the final document tree. Only available after the task reaches `completed` status.
 
 **Example:**
 ```bash
-curl http://localhost:8000/tasks/a1b2c3d4e5f6/result
+curl -s http://localhost:8440/tasks/13a6fe195a844709/result | python -m json.tool
 ```
 
 **Response (completed):**
 ```json
 {
-  "task_id": "a1b2c3d4e5f6",
+  "task_id": "13a6fe195a844709",
   "status": "completed",
   "result": {
-    "doc_id": "my_document",
+    "doc_id": "page_2",
     "status": "success",
     "message": "Document processed successfully",
-    "tree": { ... }
+    "tree": {
+      "type": "root",
+      "level": 0,
+      "children": [
+        {
+          "type": "text",
+          "title": "Default Title",
+          "content": "京沪高铁 ↑ 股票代码 601816<|txt_split|>秋意漫卷...",
+          "level": 1,
+          "location": [{"bbox": [0.196, 0.866, 0.298, 0.91], "page": 1}],
+          "block_ids": [1, 2, 3]
+        }
+      ]
+    }
   },
   "error": null
 }
@@ -197,11 +296,22 @@ curl http://localhost:8000/tasks/a1b2c3d4e5f6/result
 **Response (still processing):**
 ```json
 {
-  "task_id": "a1b2c3d4e5f6",
+  "task_id": "13a6fe195a844709",
   "status": "processing",
   "error": "Task is still processing"
 }
 ```
+
+**Response (pending):**
+```json
+{
+  "task_id": "13a6fe195a844709",
+  "status": "pending",
+  "error": "Task is still pending"
+}
+```
+
+---
 
 ### 6. JSON Input (Synchronous)
 
@@ -210,11 +320,11 @@ POST /process/json
 Content-Type: application/json
 ```
 
-Submit already-normalized pages data directly for inference and tree building.
+Submit pre-normalized pages data directly (skip label normalization step).
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8000/process/json \
+curl -X POST http://localhost:8440/process/json \
   -H "Content-Type: application/json" \
   -d '{
     "doc_id": "mydoc",
@@ -227,17 +337,65 @@ curl -X POST http://localhost:8000/process/json \
   }'
 ```
 
+---
+
+## Document Tree Node Structure
+
+Each node in the `tree` has 8 fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Node type: `root`, `text`, `table`, `image`, `page_number`, `header`, `footer`, ... |
+| `title` | string | Section title, or `"Default Title"` if none detected |
+| `metadata` | string | Footnotes, supplementary info |
+| `content` | string | Body text, segments separated by `<\|txt_split\|>` or `<\|txt_contd\|>` |
+| `level` | int | Heading level (1=H1, 2=H2, ...), -1 for non-headings |
+| `location` | array | `[{bbox: [x1,y1,x2,y2], page: N}]` — normalized coordinates (0-1) |
+| `block_ids` | array | Traceable back to original OCR output block IDs |
+| `children` | array | Recursive child nodes of the same structure |
+
 ## ZIP File Structure
 
-The ZIP file should contain OCR output files in the format expected by the specified model:
+The ZIP should contain OCR output in the format expected by each model. The `doc_id` is auto-detected from the top-level directory inside the ZIP (falls back to ZIP filename stem).
 
-| Model | ZIP Contents |
-|-------|-------------|
-| `mineru` | `{doc_id}_model.json` or `{doc_id}_middle.json` or `{doc_id}_content_list.json` |
+### mineru
+
+Newer MinerU uses `hybrid_auto/`, older versions use `vlm/`. Both are auto-detected.
+
+```
+{zip_root}/
+└── {doc_id}/
+    └── hybrid_auto/          ← or vlm/ (auto-detected)
+        ├── {doc_id}_model.json     ← preferred
+        ├── {doc_id}_middle.json    ← fallback
+        ├── {doc_id}_content_list.json
+        ├── {doc_id}_origin.pdf     ← VLM page rendering (optional)
+        ├── {doc_id}_layout.pdf
+        └── images/
+            └── *.jpg
+```
+
+**Example** (what we tested):
+```
+page_2_mineru.zip
+└── page_2/
+    └── hybrid_auto/
+        ├── page_2_model.json
+        ├── page_2_middle.json
+        ├── page_2_content_list.json
+        ├── page_2_origin.pdf
+        ├── page_2_layout.pdf
+        └── images/ (27 jpg files)
+```
+
+### Other Models
+
+| Model | Key Files |
+|-------|----------|
 | `monkeyocr` | `{doc_id}_middle.json` |
-| `PaddleOCR-VL-1.5` | `layout_parsing.json` or `{doc_id}_*_res.json` files |
+| `PaddleOCR-VL-1.5` | `layout_parsing.json` or `{doc_id}_*_res.json` |
 | `dolphin` | `recognition_json/{doc_id}.json` |
-| `glm-ocr` | `{doc_id}_model.json` or `page_*.json` files |
+| `glm-ocr` | `{doc_id}_model.json` or `page_*.json` |
 
 ## Architecture
 
