@@ -627,10 +627,21 @@ def write_raw_summary(raw_doc_dir, payload):
         json.dump(payload, f, ensure_ascii=False, indent=4)
 
 
-def main(input_label, ocr_res, output_dir, raw_output_dir=None):
+def main(input_label, ocr_res, output_dir, raw_output_dir=None, progress_callback=None):
     """
     Post-Processing the OCR result of each document
+
+    Args:
+        input_label: Document label / PDF path
+        ocr_res: OCR results dict keyed by page number
+        output_dir: Directory for final output JSON
+        raw_output_dir: Optional directory for raw intermediate records
+        progress_callback: Optional callable(phase, message) for progress reporting.
+            Called at each inference phase boundary with chunk counts.
     """
+    def _report(phase, message):
+        if progress_callback:
+            progress_callback(phase, message)
     doc_stem = safe_doc_stem(input_label)
     raw_doc_dir = os.path.join(raw_output_dir, doc_stem) if raw_output_dir else None
     print(os.path.join(output_dir, f"{doc_stem}.json"))
@@ -660,6 +671,7 @@ def main(input_label, ocr_res, output_dir, raw_output_dir=None):
     
     # Text Truncation Analysis with Dynamic Chunking
     ranges, chunks = adaptive_chunk(parse_string_notype(contd))
+    _report("contd_start", f"Text truncation analysis ({len(chunks)} chunks)")
     results = []
 
     async def process_chunk_contd(chunk_index, rng, chunk, input_label, results):
@@ -692,9 +704,11 @@ def main(input_label, ocr_res, output_dir, raw_output_dir=None):
         texts.append(f"<|src_id|>{pair['src_id']}<|tgt_id|>{pair['tgt_id']}")
     contd_output = '\n'.join(texts)
     
+    _report("contd_done", "Text truncation complete")
 
     # Title Hierarchy Analysis with Dynamic Chunking
     ranges, chunks = adaptive_chunk(parse_string_notype(title))
+    _report("title_start", f"Title hierarchy analysis ({len(chunks)} chunks)")
     order_res = {}
     results = []
 
@@ -757,8 +771,11 @@ def main(input_label, ocr_res, output_dir, raw_output_dir=None):
         texts.append(f"<|id|>{pair['id']}<|level|>{pair['level']}")      
     title_output = '\n'.join(texts)
     
+    _report("title_done", "Title hierarchy complete")
+
     # Association Analysis with Dynamic Chunking
     ranges, chunks = adaptive_chunk(parse_string_type(image))
+    _report("image_start", f"Image-text association ({len(chunks)} chunks)")
     results = []
     async def process_chunk_image(chunk_index, rng, chunk, input_label, results):
         pages = list(set([block['page'] for block in chunk]))
@@ -791,6 +808,8 @@ def main(input_label, ocr_res, output_dir, raw_output_dir=None):
         
     image_output = '\n'.join(texts)
     
+    _report("image_done", "Image-text association complete")
+
     contd_label = extract_label1(contd_output)
     title_label = extract_label2(title_output)
     image_label = extract_label1(image_output)

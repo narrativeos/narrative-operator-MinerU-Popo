@@ -71,8 +71,29 @@ def process_task(task_id: str, worker_id: str) -> None:
             origin = [p for p in pdf_files if "_origin" in p.stem]
             pdf_path = str(origin[0]) if origin else str(pdf_files[0])
 
+        # Map inference sub-phases to overall percentages (15%–85%)
+        _phase_pct = {
+            "contd_start": 20,
+            "contd_done": 40,
+            "title_start": 40,
+            "title_done": 60,
+            "image_start": 60,
+            "image_done": 75,
+        }
+
+        def _on_infer_progress(phase: str, message: str) -> None:
+            pct = _phase_pct.get(phase, 50)
+            update_task_status(
+                task_id, "processing",
+                f"[{pct}%] {message}"
+            )
+
         infer_dir = extract_dir / "inferred"
-        elements = run_inference(doc_id, pages, str(infer_dir), pdf_path=pdf_path)
+        elements = run_inference(
+            doc_id, pages, str(infer_dir),
+            pdf_path=pdf_path,
+            progress_callback=_on_infer_progress,
+        )
 
         element_count = len(elements) if isinstance(elements, list) else 0
         update_task_status(

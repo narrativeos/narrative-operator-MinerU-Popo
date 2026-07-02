@@ -5,7 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 def run_inference(
@@ -13,6 +13,7 @@ def run_inference(
     pages: Dict[str, List[Dict[str, Any]]],
     output_dir: str,
     pdf_path: Optional[str] = None,
+    progress_callback: Optional[Callable[[str, str], None]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run MinerU-Popo inference on normalized pages data.
@@ -25,6 +26,8 @@ def run_inference(
                   Passed as input_label to inference.main(). If None,
                   falls back to doc_id (may cause inference failure
                   if the VLM needs page images).
+        progress_callback: Optional callable(phase, message) for progress reporting.
+            Called at each inference sub-phase boundary.
         
     Returns:
         List of processed elements with inference results
@@ -48,6 +51,7 @@ def run_inference(
         copy.deepcopy(pages),
         output_dir,
         raw_output_dir=None,
+        progress_callback=progress_callback,
     )
     
     # Read the output (inference.main saves as {safe_doc_stem(input_label)}.json)
