@@ -323,11 +323,13 @@ async def get_async_task_result(task_id: str):
             raise HTTPException(status_code=500, detail="Result data missing")
 
         tree_json = result_data.get("tree", "{}")
+        tree_node = None
+        tree_error = None
         try:
             tree = json.loads(tree_json)
             tree_node = TreeNode.model_validate(tree)
-        except Exception:
-            tree_node = None
+        except Exception as e:
+            tree_error = f"Tree serialization failed: {e}"
 
         return TaskResultResponse(
             task_id=task_id,
@@ -338,6 +340,7 @@ async def get_async_task_result(task_id: str):
                 message=result_data.get("message", "Document processed successfully"),
                 tree=tree_node,
             ),
+            error=tree_error,
         )
     else:
         raise HTTPException(status_code=500, detail=f"Unknown task status: {status}")
