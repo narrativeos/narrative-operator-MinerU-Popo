@@ -154,65 +154,14 @@ def _transformers_generate(prompt, base64_image):
     return output_text[0] if output_text else ""
 
 def popo_generate(prompt, base64_image):
-    if os.environ.get("POPO_INFERENCE_BACKEND") == "transformers":
-        return _transformers_generate(prompt, base64_image)
-
-    from openai import OpenAI
-
-    url = "http://127.0.0.1:1234/v1"
-    key = "not-needed"  # LM Studio doesn't require a real key
-    base_model = "qwen/qwen3-vl-4b"
-    client = OpenAI(
-        base_url=url,
-        api_key=key
-    )
-    res = ""
-    cnt = 0
-    prompt = prompt[:100000] if len(prompt)>100000 else prompt
-    
-    
-    if base64_image:
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
-                        }
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
-    else:
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt}
-                ],
-            }
-        ]
-
-    while cnt < 5:
-        try:
-            response = client.chat.completions.create(
-                model=base_model,
-                messages=messages,
-                max_tokens=50000,
-                temperature = 1
-            )
-            res = response.choices[0].message.content
-
-            return res
-
-        except Exception as e:
-            cnt += 1
-            print(e)
-
-    return ""
+    if os.environ.get("POPO_INFERENCE_BACKEND") != "transformers":
+        raise RuntimeError(
+            "POPO_INFERENCE_BACKEND must be set to 'transformers'. "
+            "The Popo model requires fine-tuned weights loaded locally "
+            "via transformers, not a generic vLLM/LM Studio endpoint. "
+            "Set: export POPO_INFERENCE_BACKEND=transformers"
+        )
+    return _transformers_generate(prompt, base64_image)
 
 def qwen_generate(prompt, base64_image):
     from openai import OpenAI
