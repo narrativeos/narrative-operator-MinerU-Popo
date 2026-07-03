@@ -428,9 +428,10 @@ def extract_label1(s):
             src_id = src_part.split("<|src_id|>")[1]
             tgt_id = tgt_part
             result.append({"src_id": int(src_id), "tgt_id": int(tgt_id)})
-        except Exception as e:
-            None
-            # print(f"Error format: {line}")
+        except Exception:
+            pass
+    if not result and s.strip():
+        print(f"[warn] extract_label1: failed to parse model output ({len(s)} chars): {s[:200]!r}")
     return result
 
 def extract_label2(s):
@@ -445,9 +446,10 @@ def extract_label2(s):
             level = level_part
             if int(level) >= 0:
                 result.append({"id": int(idx), "level": int(level)})
-        except Exception as e:
-            None
-            # print(f"Error format: {line}")
+        except Exception:
+            pass
+    if not result and s.strip():
+        print(f"[warn] extract_label2: failed to parse model output ({len(s)} chars): {s[:200]!r}")
     return result
 
 def parse_string_notype(input_string):
