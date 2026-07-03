@@ -45,14 +45,21 @@ def run_inference(
     # Use pdf_path as input_label if available, otherwise fall back to doc_id
     input_label = pdf_path or doc_id
     
-    # Run inference
-    run_one_document(
-        input_label,
-        copy.deepcopy(pages),
-        output_dir,
-        raw_output_dir=None,
-        progress_callback=progress_callback,
-    )
+    # inference.main() uses asyncio.run() internally. To ensure it always
+    # gets a clean event loop regardless of the calling context (FastAPI
+    # handler, worker thread, etc.), run it in a dedicated thread via
+    # ThreadPoolExecutor.
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            run_one_document,
+            input_label,
+            copy.deepcopy(pages),
+            output_dir,
+            raw_output_dir=None,
+            progress_callback=progress_callback,
+        )
+        future.result()
     
     # Read the output (inference.main saves as {safe_doc_stem(input_label)}.json)
     output_path = Path(output_dir) / f"{doc_id}.json"
