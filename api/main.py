@@ -195,10 +195,12 @@ async def process_ocr_zip(
 
     try:
         # inference.main() uses asyncio.run() internally which conflicts
-        # with FastAPI's async event loop. nest_asyncio allows nesting.
-        import nest_asyncio
-        nest_asyncio.apply()
-        tree = _process_pipeline(final_doc_id, model, extract_dir)
+        # with FastAPI's async event loop. Run the pipeline in a thread
+        # executor so asyncio.run() gets a fresh event loop.
+        loop = asyncio.get_running_loop()
+        tree = await loop.run_in_executor(
+            None, _process_pipeline, final_doc_id, model, extract_dir
+        )
 
         return ProcessResponse(
             doc_id=final_doc_id,
