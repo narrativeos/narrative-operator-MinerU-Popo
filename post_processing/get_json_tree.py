@@ -103,6 +103,9 @@ def construct_json_tree(input_file, output_dir, txt_dir):
                 locations = element.get('merged_locations', [{'bbox':element['bbox'], 'page':element['page']}])
                 block_ids = element.get('merged_block_ids', [element['id']])
                 visual_component = cp_init(cp_type=element['type'], content = element['content'], level = element['image'], location = locations, block_ids = block_ids)
+                # Preserve image file path when available
+                if element.get('img_path'):
+                    visual_component['img_path'] = element['img_path']
                 
                 for elem in elements:
                     if elem['image'] == element['id']:

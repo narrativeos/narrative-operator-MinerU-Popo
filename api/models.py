@@ -30,6 +30,7 @@ class TreeNode(BaseModel):
     location: List[Location] = []
     block_ids: List[int] = []
     children: List["TreeNode"] = []
+    img_path: str = ""
 
 
 class ProcessResponse(BaseModel):

@@ -70,6 +70,10 @@ class NormalizedBlock:
         if self.source_label is not None:
             block["source_label"] = self.source_label
         block["source_id"] = self.block_id
+        # Preserve image path when available (from MinerU content_list)
+        img_path = self.meta.get("img_path")
+        if img_path:
+            block["img_path"] = img_path
         return block
 
 
@@ -485,16 +489,77 @@ class MineruReader(BaseReader):
         middle_path = doc_root / f"{doc_id}_middle.json"
         content_list_path = doc_root / f"{doc_id}_content_list.json"
 
+        result = None
         if model_path.exists():
-            return self._read_model(doc_id, model_path)
-        if middle_path.exists():
-            return self._read_middle(doc_id, middle_path)
-        content_items = []
-        if content_list_path.exists():
-            loaded = safe_json_load(content_list_path)
-            if isinstance(loaded, list):
-                content_items = loaded
-        return self._read_content_list(doc_id, content_items)
+            result = self._read_model(doc_id, model_path)
+        elif middle_path.exists():
+            result = self._read_middle(doc_id, middle_path)
+        else:
+            content_items = []
+            if content_list_path.exists():
+                loaded = safe_json_load(content_list_path)
+                if isinstance(loaded, list):
+                    content_items = loaded
+            result = self._read_content_list(doc_id, content_items)
+
+        # Enrich image blocks with img_path from middle.json or content_list.json
+        # (model.json lacks img_path, so we supplement from whichever is available)
+        result = self._enrich_img_paths(result, doc_root, doc_id)
+        return result
+
+    def _enrich_img_paths(
+        self, result: ReaderResult, doc_root: Path, doc_id: str
+    ) -> ReaderResult:
+        """Supplement image blocks with img_path from middle.json."""
+        middle_path = doc_root / f"{doc_id}_middle.json"
+        if not middle_path.exists():
+            return result
+
+        data = safe_json_load(middle_path)
+        img_path_map: dict[tuple[int, tuple[float, ...]], str] = {}
+        for page in data.get("pdf_info", []):
+            page_index = int(page.get("page_idx", 0)) + 1
+            page_size = page.get("page_size") or [None, None]
+            page_width = page_size[0] if len(page_size) > 0 else None
+            page_height = page_size[1] if len(page_size) > 1 else None
+
+            def _collect_img_paths(block_list: list[dict[str, Any]]) -> None:
+                for item in block_list:
+                    if item.get("type") != "image":
+                        continue
+                    img_path = item.get("img_path", "")
+                    if not img_path:
+                        continue
+                    norm_bbox = tuple(
+                        normalize_bbox_to_unit(
+                            item.get("bbox", [0, 0, 0, 0]),
+                            page_width,
+                            page_height,
+                        )
+                    )
+                    # Don't overwrite an existing entry from a higher-priority source
+                    img_path_map.setdefault((page_index, norm_bbox), img_path)
+
+            # Prioritize para_blocks, then fall back to preproc_blocks
+            _collect_img_paths(page.get("para_blocks", []))
+            _collect_img_paths(page.get("preproc_blocks", []))
+
+        if not img_path_map:
+            return result
+
+        # Match blocks to img_path by fuzzy bbox comparison
+        for block in result.blocks:
+            if block.type != "image" or block.meta.get("img_path"):
+                continue
+            for (page, ref_bbox), img_path in img_path_map.items():
+                if page != block.page:
+                    continue
+                diff = sum(abs(a - b) for a, b in zip(ref_bbox, block.bbox))
+                if diff < 0.05:
+                    block.meta["img_path"] = img_path
+                    break
+
+        return result
 
     def _read_model(self, doc_id: str, model_path: Path) -> ReaderResult:
         data = safe_json_load(model_path)
@@ -540,6 +605,10 @@ class MineruReader(BaseReader):
                 content = extract_block_content(item)
                 if not content and canonical in {"text", "title", "caption"}:
                     continue
+                meta: dict[str, Any] = {}
+                img_path = item.get("img_path", "")
+                if img_path:
+                    meta["img_path"] = img_path
                 blocks.append(
                     self.make_block(
                         doc_id,
@@ -552,6 +621,7 @@ class MineruReader(BaseReader):
                         source_label=str(item.get("type", "")),
                         page_width=page_width,
                         page_height=page_height,
+                        meta=meta if meta else None,
                     )
                 )
                 order += 1
