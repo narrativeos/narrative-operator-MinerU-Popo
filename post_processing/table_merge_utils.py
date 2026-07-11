@@ -273,6 +273,21 @@ def merge_cross_page_tables(elements):
             {"bbox": partner["bbox"], "page": partner["page"]},
         ]
         element["merged_block_ids"] = [element["id"], partner["id"]]
+        # Merge source_block_ids for full traceability
+        merged_src_ids = []
+        for src_field in ("source_block_id", "source_block_ids"):
+            val = element.get(src_field)
+            if isinstance(val, list):
+                merged_src_ids.extend(val)
+            elif val:
+                merged_src_ids.append(val)
+            val = partner.get(src_field)
+            if isinstance(val, list):
+                merged_src_ids.extend(val)
+            elif val:
+                merged_src_ids.append(val)
+        if merged_src_ids:
+            element["merged_source_block_ids"] = list(dict.fromkeys(merged_src_ids))  # deduplicate, preserve order
 
         for other in elements:
             if other.get("image") == partner["id"]:

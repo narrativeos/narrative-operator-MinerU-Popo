@@ -19,7 +19,7 @@ supplement_source_label_map = {
     'footnote': 'page_footnote',
 }
 
-def cp_init(cp_type="",title="",metadata="",content="",level=-1,location=None,block_ids=None):
+def cp_init(cp_type="",title="",metadata="",content="",level=-1,location=None,block_ids=None,source_block_ids=None):
     # Create a component
     cp = {
         'type': cp_type,
@@ -28,7 +28,8 @@ def cp_init(cp_type="",title="",metadata="",content="",level=-1,location=None,bl
         'content': content,
         'level': level,
         'location': [] if not location else location,
-        'block_ids': [] if not block_ids else block_ids
+        'block_ids': [] if not block_ids else block_ids,
+        'source_block_ids': [] if source_block_ids is None else source_block_ids,
     }
     return cp
 
@@ -56,7 +57,12 @@ def construct_json_tree(input_file, output_dir, txt_dir):
                 cur_text_title = element['content']
                 if cur_text_cp['title'] != "Default Title" or cur_text_cp['content'] != "":
                     text_components.append(cur_text_cp)
-                cur_text_cp = cp_init(cp_type="text", title = cur_text_title, level = element['level'], location = [{'bbox':element['bbox'], 'page':element['page']}], block_ids = [element['id']])
+                src_block_id = element.get('source_block_id')
+                src_block_ids_list = [src_block_id] if src_block_id else []
+                cur_text_cp = cp_init(cp_type="text", title = cur_text_title, level = element['level'],
+                    location = [{'bbox':element['bbox'], 'page':element['page']}],
+                    block_ids = [element['id']],
+                    source_block_ids = src_block_ids_list)
 
             elif element["type"] not in special_types + large_block_types + supplement_types:
                 if element['contd'] >= 0:
@@ -65,6 +71,10 @@ def construct_json_tree(input_file, output_dir, txt_dir):
                 cur_text_cp['content'] = cur_text_cp['content'] + contd_label + element['content'] if cur_text_cp['content'] else element['content']
                 cur_text_cp['location'].append({'bbox':element['bbox'], 'page':element['page']})
                 cur_text_cp['block_ids'].append(element['id'])
+                # Collect source_block_id for traceability
+                src_id = element.get('source_block_id')
+                if src_id and src_id not in cur_text_cp['source_block_ids']:
+                    cur_text_cp['source_block_ids'].append(src_id)
 
         text_components.append(cur_text_cp)
 
@@ -102,7 +112,14 @@ def construct_json_tree(input_file, output_dir, txt_dir):
             if element['type'] in ['table', 'chart', 'image', 'seal', 'image_block']:
                 locations = element.get('merged_locations', [{'bbox':element['bbox'], 'page':element['page']}])
                 block_ids = element.get('merged_block_ids', [element['id']])
-                visual_component = cp_init(cp_type=element['type'], content = element['content'], level = element['image'], location = locations, block_ids = block_ids)
+                # Collect source_block_ids for traceability (support both single and merged blocks)
+                src_ids = element.get('merged_source_block_ids', [])
+                if not src_ids:
+                    src_id = element.get('source_block_id')
+                    if src_id:
+                        src_ids = [src_id]
+                visual_component = cp_init(cp_type=element['type'], content = element['content'], level = element['image'],
+                    location = locations, block_ids = block_ids, source_block_ids = src_ids)
                 # Preserve image file path when available
                 if element.get('img_path'):
                     visual_component['img_path'] = element['img_path']
@@ -113,10 +130,18 @@ def construct_json_tree(input_file, output_dir, txt_dir):
                             visual_component['title'] = visual_component['title'] + " " + elem['content'] if visual_component['title'] else elem['content']
                             visual_component['location'].append({'bbox':elem['bbox'], 'page':elem['page']})
                             visual_component['block_ids'].append(elem['id'])
+                            # Collect source_block_id for traceability
+                            elem_src = elem.get('source_block_id')
+                            if elem_src and elem_src not in visual_component['source_block_ids']:
+                                visual_component['source_block_ids'].append(elem_src)
                         elif 'footnote' in elem['type']:
                             visual_component['metadata'] = visual_component['metadata'] + " " + elem['content'] if visual_component['metadata']  else elem['content']
                             visual_component['location'].append({'bbox':elem['bbox'], 'page':elem['page']})
                             visual_component['block_ids'].append(elem['id'])
+                            # Collect source_block_id for traceability
+                            elem_src = elem.get('source_block_id')
+                            if elem_src and elem_src not in visual_component['source_block_ids']:
+                                visual_component['source_block_ids'].append(elem_src)
                 visual_components.append(visual_component)
 
         for visual_component in visual_components:
@@ -167,7 +192,12 @@ def construct_json_tree(input_file, output_dir, txt_dir):
                     cnt += 1
                     title = f"Page {element['page']} - {element['type']} - {cnt}"
                 exist.append(title)
-                supp_component = cp_init(cp_type=element['type'], title = title, metadata = element['content'], content = element['content'], location = [{'bbox':element['bbox'], 'page':element['page']}], block_ids = [element['id']])
+                src_block_id = element.get('source_block_id')
+                src_block_ids_list = [src_block_id] if src_block_id else []
+                supp_component = cp_init(cp_type=element['type'], title = title, metadata = element['content'], content = element['content'],
+                    location = [{'bbox':element['bbox'], 'page':element['page']}],
+                    block_ids = [element['id']],
+                    source_block_ids = src_block_ids_list)
                 text_tree['children'].append(supp_component)
 
     add_supplement(text_tree, elements)

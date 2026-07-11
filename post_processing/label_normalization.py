@@ -53,6 +53,8 @@ class NormalizedBlock:
     popo_type: str
     title_level: int | None = None
     source_label: str | None = None
+    source_block_id: str | None = None
+    source_block_ids: list[str] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -69,7 +71,12 @@ class NormalizedBlock:
             block["title_level"] = self.title_level
         if self.source_label is not None:
             block["source_label"] = self.source_label
-        block["source_id"] = self.block_id
+        block["id"] = self.block_id
+        # Preserve source_block_id (original MinerU UUID) for full traceability
+        if self.source_block_id:
+            block["source_block_id"] = self.source_block_id
+        if self.source_block_ids:
+            block["source_block_ids"] = self.source_block_ids
         # Preserve image path when available (from MinerU content_list)
         img_path = self.meta.get("img_path")
         if img_path:
@@ -116,6 +123,8 @@ class BaseReader:
         popo_type: str | None = None,
         title_level: int | None = None,
         source_label: str | None = None,
+        source_block_id: str | None = None,
+        source_block_ids: list[str] | None = None,
         page_width: float | int | None = None,
         page_height: float | int | None = None,
         meta: dict[str, Any] | None = None,
@@ -132,6 +141,8 @@ class BaseReader:
             popo_type=popo_type or canonical_type,
             title_level=title_level,
             source_label=source_label,
+            source_block_id=source_block_id,
+            source_block_ids=source_block_ids or [],
             meta=meta or {},
         )
 
@@ -573,6 +584,9 @@ class MineruReader(BaseReader):
                 content = extract_block_content(item)
                 if not content and canonical in {"text", "title", "caption"}:
                     continue
+                # Preserve original MinerU block_id for traceability
+                source_block_id = item.get("block_id")
+                source_block_ids = item.get("block_ids")
                 blocks.append(
                     self.make_block(
                         doc_id,
@@ -583,6 +597,8 @@ class MineruReader(BaseReader):
                         content,
                         popo_type=popo_type,
                         source_label=str(item.get("type", "")),
+                        source_block_id=str(source_block_id) if source_block_id else None,
+                        source_block_ids=[str(sid) for sid in source_block_ids] if source_block_ids else None,
                         meta={"source": "model_json"},
                     )
                 )
@@ -609,6 +625,9 @@ class MineruReader(BaseReader):
                 img_path = item.get("img_path", "")
                 if img_path:
                     meta["img_path"] = img_path
+                # Preserve original MinerU block_id for traceability
+                source_block_id = item.get("block_id")
+                source_block_ids = item.get("block_ids")
                 blocks.append(
                     self.make_block(
                         doc_id,
@@ -619,6 +638,8 @@ class MineruReader(BaseReader):
                         content,
                         popo_type=popo_type,
                         source_label=str(item.get("type", "")),
+                        source_block_id=str(source_block_id) if source_block_id else None,
+                        source_block_ids=[str(sid) for sid in source_block_ids] if source_block_ids else None,
                         page_width=page_width,
                         page_height=page_height,
                         meta=meta if meta else None,
@@ -643,6 +664,9 @@ class MineruReader(BaseReader):
             content = extract_block_content(item)
             if not content and canonical in {"text", "title", "caption"}:
                 continue
+            # Preserve original MinerU block_id for traceability
+            source_block_id = item.get("block_id")
+            source_block_ids = item.get("block_ids")
             blocks.append(
                 self.make_block(
                     doc_id,
@@ -654,6 +678,8 @@ class MineruReader(BaseReader):
                     popo_type=popo_type,
                     title_level=level,
                     source_label=str(item.get("type", "")),
+                    source_block_id=str(source_block_id) if source_block_id else None,
+                    source_block_ids=[str(sid) for sid in source_block_ids] if source_block_ids else None,
                     meta={"source": "content_list"},
                 )
             )

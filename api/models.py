@@ -29,6 +29,7 @@ class TreeNode(BaseModel):
     level: int = 0
     location: List[Location] = []
     block_ids: List[int] = []
+    source_block_ids: List[str] = []
     children: List["TreeNode"] = []
     img_path: str = ""
 
