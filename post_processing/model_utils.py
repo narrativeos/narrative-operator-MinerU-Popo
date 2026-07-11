@@ -3,6 +3,8 @@ import json
 import os
 from tqdm import tqdm
 
+from api.config import INFERENCE_BACKEND, MAX_NEW_TOKENS
+
 import fitz  # PyMuPDF
 from PIL import Image
 import io
@@ -77,7 +79,7 @@ def _transformers_generate(prompt, base64_image):
         "POPO_MODEL_PATH",
         "popo_model",
     )
-    max_new_tokens = int(os.environ.get("POPO_MAX_NEW_TOKENS", "2048"))
+    max_new_tokens = MAX_NEW_TOKENS
     device = _get_device()
 
     if _TRANSFORMERS_MODEL is None or _TRANSFORMERS_PROCESSOR is None:
@@ -154,7 +156,7 @@ def _transformers_generate(prompt, base64_image):
     return output_text[0] if output_text else ""
 
 def popo_generate(prompt, base64_image):
-    if os.environ.get("POPO_INFERENCE_BACKEND") != "transformers":
+    if INFERENCE_BACKEND != "transformers":
         raise RuntimeError(
             "POPO_INFERENCE_BACKEND must be set to 'transformers'. "
             "The Popo model requires fine-tuned weights loaded locally "

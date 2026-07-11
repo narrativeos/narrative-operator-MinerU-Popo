@@ -42,3 +42,7 @@ MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 # Worker settings
 WORKER_CONCURRENCY = int(os.environ.get("POPO_WORKER_CONCURRENCY", "4"))
 SYNC_TIMEOUT = int(os.environ.get("POPO_SYNC_TIMEOUT", "300"))  # 5 minutes
+
+# Inference settings
+INFERENCE_BACKEND = os.environ.get("POPO_INFERENCE_BACKEND", "transformers")
+MAX_NEW_TOKENS = int(os.environ.get("POPO_MAX_NEW_TOKENS", "8192"))
